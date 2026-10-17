@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "trigger": "tsx src/trigger.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "echo 'No build step: tsx runs the TypeScript source directly'"
   },
   "dependencies": {
     "cors": "^2.8.6",
