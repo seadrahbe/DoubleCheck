@@ -1,0 +1,164 @@
+.site-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.logo {
+  color: var(--accent);
+  font-weight: 700;
+  letter-spacing: -3px;
+}
+
+.brand {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 32px 16px;
+}
+
+.site-footer {
+  padding: 16px;
+  text-align: center;
+  font-size: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.card {
+  width: 100%;
+  max-width: 560px;
+  box-sizing: border-box;
+  padding: 28px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.muted {
+  color: var(--text);
+}
+
+.small {
+  font-size: 0.85rem;
+  margin: 20px 0 0;
+}
+
+.error {
+  color: var(--bad);
+}
+
+.attempt {
+  font-size: 0.9rem;
+  padding: 10px 12px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  background: var(--code-bg);
+}
+
+.progress {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.reveal {
+  color: var(--text-h);
+  font-size: 1.4rem;
+  line-height: 1.45;
+  min-height: 4.4em;
+  margin-bottom: 24px;
+}
+
+.word {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.word.visible {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word {
+    transition: none;
+  }
+}
+
+.answers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.answer {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-h);
+  background: var(--surface);
+  border: 2px solid var(--border);
+  transition: border-color 0.15s;
+}
+
+.answer:not(:disabled):hover {
+  border-color: var(--accent);
+}
+
+.primary {
+  margin: 8px 0 16px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: none;
+}
+
+.code {
+  font-family: var(--mono);
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+  color: var(--good);
+  margin: 24px 0 8px;
+}
+
+.alert {
+  border-color: var(--bad);
+}
+
+.alert h1 {
+  color: var(--bad);
+}
+
+.steps,
+.resources {
+  margin: 0 0 16px;
+  padding-left: 22px;
+}
+
+.steps li,
+.resources li {
+  margin-bottom: 6px;
+}
