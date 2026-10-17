@@ -31,7 +31,7 @@ router.post("/login-attempts", async (req, res) => {
   if (!contact) {
     const name = channel === "email" ? "MY_EMAIL" : "MY_PHONE_NUMBER";
     console.log(`\n[${channel}] ${name} not set, would have sent:\n${intro} ${link}\n`);
-    res.status(201).json({ channel, sent: false, link });
+    res.status(201).json({ channel, sent: false, link, message: `${intro} ${link}` });
     return;
   }
 
@@ -46,10 +46,15 @@ router.post("/login-attempts", async (req, res) => {
               `<p style="color:#666;font-size:13px">This link expires in 10 minutes and can only be used once.</p>`,
           )
         : await sendSms(contact, `${intro} ${link}`);
-    res.status(201).json({ channel, sent, link });
+    res.status(201).json({ channel, sent, link, message: `${intro} ${link}` });
   } catch (err) {
     console.error(`[${channel}] failed:`, err);
-    res.status(502).json({ error: `Failed to send ${channel === "email" ? "email" : "text message"}.`, link });
+    const reason = err instanceof Error ? err.message : String(err);
+    res.status(502).json({
+      error: `Failed to send ${channel === "email" ? "email" : "text message"}: ${reason}`,
+      link,
+      message: `${intro} ${link}`,
+    });
   }
 });
 
