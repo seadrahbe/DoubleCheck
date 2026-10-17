@@ -1,0 +1,53 @@
+# Render Blueprint: New > Blueprint in the Render dashboard, pick this repo.
+# Values marked `sync: false` are entered in the dashboard (never commit them).
+services:
+  - type: web
+    name: doublecheck-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # The frontend's Render URL, e.g. https://doublecheck-frontend.onrender.com
+      - key: FRONTEND_URL
+        sync: false
+      - key: SIMULATED_LOGIN_IP
+        value: 185.220.101.1
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: DoubleCheck <onboarding@resend.dev>
+      - key: MY_EMAIL
+        sync: false
+      - key: MY_PHONE_NUMBER
+        sync: false
+      # Optional: leave blank and texts are shown on the demo page's phone instead.
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+
+  - type: web
+    name: doublecheck-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    # Single-page app: serve index.html for /survey and any other path.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # The backend's Render URL, e.g. https://doublecheck-backend.onrender.com
+      # Read at build time, so redeploy the frontend after changing it.
+      - key: VITE_API_URL
+        sync: false
