@@ -14,7 +14,25 @@ const escapeHtml = (s: string) =>
 
 // Simulates a suspicious login: creates a one-time token and sends the survey
 // link by text (`{ channel: "sms" }`, the default) or email (`{ channel: "email" }`).
+// Once deployed this endpoint is public, so cap how often it can send messages
+// (shared across all callers; resets on restart).
+const SEND_LIMIT = { perWindow: 20, windowMs: 60 * 60 * 1000, minGapMs: 5000 };
+let sendTimes: number[] = [];
+
+function sendAllowed(): boolean {
+  const now = Date.now();
+  sendTimes = sendTimes.filter((t) => now - t < SEND_LIMIT.windowMs);
+  const last = sendTimes.at(-1) ?? 0;
+  if (sendTimes.length >= SEND_LIMIT.perWindow || now - last < SEND_LIMIT.minGapMs) return false;
+  sendTimes.push(now);
+  return true;
+}
+
 router.post("/login-attempts", async (req, res) => {
+  if (!sendAllowed()) {
+    res.status(429).json({ error: "Too many requests. Wait a few seconds and try again." });
+    return;
+  }
   const channel: Channel = req.body?.channel === "email" ? "email" : "sms";
   const contact = (channel === "email" ? config.myEmail : config.myPhoneNumber) ?? "";
   const ip = config.simulatedLoginIp;

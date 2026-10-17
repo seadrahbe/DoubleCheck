@@ -3,9 +3,10 @@ import "dotenv/config";
 const env = process.env;
 
 export const config = {
-  port: Number(env.DEV_PORT) || 3056,
-  // Base URL the survey link in the text points to. Must be reachable from
-  // your phone, so use your LAN IP or a tunnel (ngrok etc.), not localhost.
+  // Render (and most hosts) assign PORT; DEV_PORT is for local development.
+  port: Number(env.PORT || env.DEV_PORT) || 3056,
+  // Base URL the survey link in the text points to, and the only origin allowed
+  // to call the API cross-origin. In production, your Render frontend URL.
   frontendUrl: (env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, ""),
   // IP the simulated suspicious login comes from (looked up to a location).
   simulatedLoginIp: env.SIMULATED_LOGIN_IP || "185.220.101.1",
