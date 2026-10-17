@@ -15,12 +15,10 @@ export const config = {
     authToken: env.TWILIO_AUTH_TOKEN,
     fromNumber: env.TWILIO_FROM_NUMBER,
   },
-  smtp: {
-    host: env.SMTP_HOST,
-    port: Number(env.SMTP_PORT) || 587,
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS,
-    from: env.SMTP_FROM,
+  resend: {
+    apiKey: env.RESEND_API_KEY,
+    // resend.dev's shared sender works without owning a domain.
+    from: env.EMAIL_FROM || "DoubleCheck <onboarding@resend.dev>",
   },
   // The only number / address messages are ever sent to.
   myPhoneNumber: env.MY_PHONE_NUMBER,

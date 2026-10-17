@@ -2,10 +2,16 @@
 import { config } from "./config.js";
 
 const channel = process.argv[2] === "email" ? "email" : "sms";
-const res = await fetch(`http://localhost:${config.port}/api/login-attempts`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ channel }),
-});
-const data = await res.json();
-console.log(res.status, data);
+const url = `http://localhost:${config.port}/api/login-attempts`;
+
+try {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ channel }),
+  });
+  console.log(res.status, await res.json());
+} catch {
+  console.error(`Couldn't reach the backend at ${url}. Start it in another terminal with \`npm run dev\` and try again.`);
+  process.exitCode = 1;
+}
