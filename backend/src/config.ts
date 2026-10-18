@@ -24,6 +24,8 @@ export const config = {
   // Secret the user's DoubleCheck Key (Bluetooth companion) serves to prove it's
   // nearby. Same value goes into the companion app / nRF Connect.
   authDeviceKey: env.AUTH_DEVICE_KEY,
+  // Powers the Big Fish support chat. Unset → scripted fallback replies.
+  anthropicApiKey: env.ANTHROPIC_API_KEY,
   // The only number / address messages are ever sent to.
   myPhoneNumber: env.MY_PHONE_NUMBER,
   myEmail: env.MY_EMAIL,

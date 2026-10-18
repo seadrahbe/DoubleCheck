@@ -6,6 +6,7 @@ import { CODE_PATTERN, matchProximityCode } from "./proximityCode.js";
 import { questionsFor } from "./questions.js";
 import { sendEmail } from "./email.js";
 import { sendSms } from "./sms.js";
+import { bigFishReply, type ChatMessage } from "./bigfish.js";
 import { createAttempt, findAttempt, type Channel } from "./store.js";
 
 export const router = Router();
@@ -198,4 +199,52 @@ router.post("/proximity/verify", (req, res) => {
   }
   console.log("[proximity] static device key verified: DoubleCheck Key nearby, signed in");
   res.json({ result: "approved" });
+});
+
+// Big Fish support chat. The app opens this when a log-in is flagged; the token
+// ties the conversation to the flagged attempt so Big Fish can cite the location.
+// LLM calls cost money and this is public, so cap the rate.
+const CHAT_LIMIT = { perWindow: 60, windowMs: 60 * 1000 };
+let chatTimes: number[] = [];
+
+router.post("/bigfish/:token", async (req, res) => {
+  const now = Date.now();
+  chatTimes = chatTimes.filter((t) => now - t < CHAT_LIMIT.windowMs);
+  if (chatTimes.length >= CHAT_LIMIT.perWindow) {
+    res.status(429).json({ error: "Big Fish is busy right now. Please wait a moment." });
+    return;
+  }
+  chatTimes.push(now);
+
+  const raw: unknown = req.body?.messages;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    res.status(400).json({ error: "Missing messages." });
+    return;
+  }
+  // Keep only well-formed turns, trim length, and cap how much history we send.
+  const messages: ChatMessage[] = raw
+    .filter(
+      (m): m is ChatMessage =>
+        !!m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim() !== "",
+    )
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }))
+    .slice(-20);
+  if (messages.length === 0 || messages[messages.length - 1].role !== "user") {
+    res.status(400).json({ error: "The last message must be from the user." });
+    return;
+  }
+
+  // Location context from the flagged attempt, if the token is still valid.
+  const found = findAttempt(req.params.token);
+  const ctx = found.ok
+    ? { location: found.attempt.location, ip: found.attempt.ip }
+    : { location: "an unfamiliar location", ip: "unknown" };
+
+  try {
+    const { reply, live } = await bigFishReply(ctx, messages);
+    res.json({ reply, live });
+  } catch (err) {
+    console.error("[bigfish] failed:", err);
+    res.status(502).json({ error: "Big Fish couldn't respond. Please try again." });
+  }
 });
