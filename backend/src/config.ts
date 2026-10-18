@@ -15,7 +15,7 @@ export const config = {
   tokenTtlMs: 10 * 60 * 1000,
   // Secret the user's DoubleCheck Key (Bluetooth companion) serves to prove it's
   // nearby. Same value goes into the companion app / nRF Connect.
-  authDeviceKey: env.AUTH_DEVICE_KEY,
+  authDeviceKey: env.AUTH_DEVICE_KEY?.trim() || undefined,
   // Powers the Big Fish support chat. Unset → scripted fallback replies.
   anthropicApiKey: env.ANTHROPIC_API_KEY,
 };

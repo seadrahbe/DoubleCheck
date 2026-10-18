@@ -180,20 +180,27 @@ router.post("/session/:token/bluetooth", (req, res) => {
     res.status(503).json({ error: "AUTH_DEVICE_KEY is not set in backend/.env" });
     return;
   }
-  const proof = String(req.body?.proof ?? "");
+  const proof = String(req.body?.proof ?? "").trim();
   const now = Date.now();
   let ok = false;
-  if (CODE_PATTERN.test(proof)) {
+  let why = "";
+  if (!proof) {
+    why = "The app didn't send a code. Make sure the app is on the pairing screen (broadcasting).";
+  } else if (CODE_PATTERN.test(proof)) {
+    // A rotating code. Accept any code valid in the current time window — we do
+    // NOT enforce single-use here, so retries in the same 30s window still work.
     const step = matchProximityCode(proof, config.authDeviceKey, now);
-    if (step !== null && step > lastUsedStep) {
-      lastUsedStep = step;
-      ok = true;
-    }
-  } else if (proof) {
+    ok = step !== null;
+    if (!ok)
+      why =
+        "The code didn't match. Check that the app's device key is identical to the server's AUTH_DEVICE_KEY, and that the phone and server clocks are both set automatically.";
+  } else {
     ok = sameSecret(proof, config.authDeviceKey);
+    if (!ok) why = "That device key doesn't match this account's AUTH_DEVICE_KEY.";
   }
   if (!ok) {
-    res.status(400).json({ error: "Couldn't confirm your key. Make sure your app is open and nearby, then try again." });
+    console.log(`[session] Bluetooth proof rejected: ${why} (received ${proof.length} chars, code-shaped=${CODE_PATTERN.test(proof)})`);
+    res.status(400).json({ error: why });
     return;
   }
   attempt.status = "approved";
