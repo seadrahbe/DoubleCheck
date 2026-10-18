@@ -51,11 +51,11 @@ export const api = {
   sessionStatus: (token: string) =>
     request<{
       status: 'pending' | 'approved' | 'code' | 'blocked'
-      method: 'bluetooth' | 'gps' | 'code' | null
+      method: 'bluetooth' | 'gps' | 'code' | 'demo' | null
       reason: BlockReason | null
     }>(`/session/${encodeURIComponent(token)}`),
-  // App marks the session verified after a Bluetooth or GPS proximity check.
-  verifySession: (token: string, method: 'bluetooth' | 'gps') =>
+  // Marks the session verified. 'demo' = the on-screen simulator (not real proximity).
+  verifySession: (token: string, method: 'bluetooth' | 'gps' | 'demo') =>
     request<{ ok: true }>(`/session/${encodeURIComponent(token)}/verify`, {
       method: 'POST',
       body: JSON.stringify({ method }),

@@ -61,7 +61,8 @@ router.post("/session/:token/verify", (req, res) => {
     res.status(409).json({ error: "This login was blocked." });
     return;
   }
-  attempt.method = req.body?.method === "gps" ? "gps" : "bluetooth";
+  const m = req.body?.method;
+  attempt.method = m === "gps" ? "gps" : m === "demo" ? "demo" : "bluetooth";
   attempt.status = "approved";
   console.log(`[session] verified by ${attempt.method}: login approved`);
   res.json({ ok: true });

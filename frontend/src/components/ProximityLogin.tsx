@@ -16,7 +16,7 @@ type State =
 
 export interface SignedInInfo {
   email: string
-  method: 'bluetooth' | 'gps' | 'code'
+  method: 'bluetooth' | 'gps' | 'code' | 'demo'
   at: Date
 }
 
@@ -49,7 +49,8 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
         const s = await api.sessionStatus(token)
         if (!active) return
         if (s.status === 'approved') {
-          onSignedIn({ email, method: s.method === 'gps' || s.method === 'code' ? s.method : 'bluetooth', at: new Date() })
+          const method = s.method && s.method !== null ? s.method : 'bluetooth'
+          onSignedIn({ email, method, at: new Date() })
         } else if (s.status === 'code') {
           setState({ step: 'enter-code', token })
         } else if (s.status === 'blocked') {

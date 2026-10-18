@@ -15,6 +15,10 @@ const VERIFIED: Record<SignedInInfo['method'], { title: string; detail: (bank: s
     title: 'a one-time code',
     detail: () => `You entered the one-time code from your app`,
   },
+  demo: {
+    title: 'the interactive demo',
+    detail: () => `Verified through the on-screen walkthrough (not a real proximity check)`,
+  },
 }
 
 export default function SignedIn({ info, onSignOut }: { info: SignedInInfo; onSignOut: () => void }) {

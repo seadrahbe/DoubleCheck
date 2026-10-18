@@ -7,7 +7,6 @@
 // These values must match the companion app (companion/ios/DoubleCheckKey).
 export const KEY_SERVICE_UUID = '07285c8e-5a66-47f4-8e3b-a5b2d860a75c'
 export const KEY_CHARACTERISTIC_UUID = '4eb838d4-69c2-46a4-8201-dc0a34406332'
-const CODE_NAME = /^DC-(\d{8})$/
 const CONNECT_TIMEOUT_MS = 10_000
 
 export type PairFailure = 'unsupported' | 'cancelled' | 'failed'
@@ -56,20 +55,25 @@ export async function pairWithPhone({ showAll = false } = {}): Promise<PairResul
     return { ok: false, reason: 'failed', message: (err as Error).message }
   }
 
-  // Broadcast proof: the rotating code is right there in the name — no connection.
-  const broadcast = device.name?.match(CODE_NAME)
-  if (broadcast) return { ok: true, proof: broadcast[1] }
-
-  // Otherwise connect and read the characteristic.
+  // Always connect and read the live characteristic — this is the proximity
+  // proof. We deliberately do NOT trust the advertised name (the browser can
+  // return a cached name even when the phone is off/absent); a live GATT read
+  // only succeeds if the phone is actually powered on and in range right now.
   try {
     const server = await withTimeout(device.gatt!.connect(), CONNECT_TIMEOUT_MS, 'Timed out connecting to your key.')
     const service = await server.getPrimaryService(KEY_SERVICE_UUID)
     const characteristic = await service.getCharacteristic(KEY_CHARACTERISTIC_UUID)
     const value = await characteristic.readValue()
-    return { ok: true, proof: new TextDecoder().decode(value).trim() }
+    const proof = new TextDecoder().decode(value).trim()
+    if (!proof) return { ok: false, reason: 'failed', message: "Your key didn't return a code. Make sure the app is on the pairing screen." }
+    return { ok: true, proof }
   } catch (err) {
     const name = device.name ?? 'That device'
-    return { ok: false, reason: 'failed', message: `Couldn't read ${name}: ${(err as Error).message}` }
+    return {
+      ok: false,
+      reason: 'failed',
+      message: `Couldn't reach ${name} over Bluetooth — is the app open and Bluetooth on? (${(err as Error).message})`,
+    }
   } finally {
     device.gatt?.disconnect()
   }

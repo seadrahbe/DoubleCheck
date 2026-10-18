@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { api, type BlockReason, type ChatTurn } from '../api'
 import { BANK_NAME, SUPPORT_NAME, SUPPORT_PHONE } from '../brand'
 
-// On-screen stand-in for the native DoubleCheck app. It verifies the login the
-// web card (left) started, sharing one session token: flagged login → check for
-// an active call → Big Fish chat → confirm → verify (Bluetooth/GPS) → or, only if
-// both fail, a one-time code the user types on the computer. Big Fish can also
-// end the chat by blocking the login (extortion, or "this wasn't me").
-type Step = 'idle' | 'home' | 'callcheck' | 'chat' | 'confirm' | 'verifying' | 'verified' | 'code' | 'blocked' | 'error'
+// On-screen stand-in for the native DoubleCheck app, sharing one session token
+// with the web card (left): flagged login → check for an active call → Big Fish
+// chat → confirm → a simulated verification that approves the session as "demo"
+// (it can't do real proximity on one device; the real check is the web's "Pair
+// with my phone"). Big Fish can also block the login (extortion / "this wasn't me").
+type Step = 'idle' | 'home' | 'callcheck' | 'chat' | 'confirm' | 'verifying' | 'verified' | 'blocked' | 'error'
 
 interface Session {
   token: string
@@ -18,8 +18,6 @@ interface Session {
 export default function InteractivePhone({ session }: { session: Session | null }) {
   const [step, setStep] = useState<Step>(session ? 'home' : 'idle')
   const [note, setNote] = useState('')
-  const [method, setMethod] = useState<'bluetooth' | 'gps'>('bluetooth')
-  const [code, setCode] = useState('')
   const [blockReason, setBlockReason] = useState<BlockReason>('extortion')
   const [error, setError] = useState('')
 
@@ -32,36 +30,12 @@ export default function InteractivePhone({ session }: { session: Session | null 
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
     setStep('verifying')
     try {
-      setNote('Checking your DoubleCheck Key over Bluetooth…')
-      await wait(1000)
-      if ('bluetooth' in navigator) {
-        await api.verifySession(token, 'bluetooth')
-        setMethod('bluetooth')
-        setStep('verified')
-        return
-      }
-      setNote('Bluetooth unavailable. Checking your location…')
-      await wait(800)
-      if ('geolocation' in navigator) {
-        const located = await new Promise<boolean>((resolve) =>
-          navigator.geolocation.getCurrentPosition(
-            () => resolve(true),
-            () => resolve(false),
-            { timeout: 8000 },
-          ),
-        )
-        if (located) {
-          await api.verifySession(token, 'gps')
-          setMethod('gps')
-          setStep('verified')
-          return
-        }
-      }
-      setNote('Bluetooth and location unavailable. Sending a one-time code…')
-      await wait(600)
-      const res = await api.issueCode(token)
-      setCode(res.code)
-      setStep('code')
+      // This is the on-screen simulator, not a real proximity check — approve
+      // the session as 'demo' so it never masquerades as real Bluetooth/GPS.
+      setNote('Simulating the app verifying you…')
+      await wait(1100)
+      await api.verifySession(token, 'demo')
+      setStep('verified')
     } catch (err) {
       setError((err as Error).message)
       setStep('error')
@@ -104,8 +78,7 @@ export default function InteractivePhone({ session }: { session: Session | null 
           )}
           {step === 'confirm' && <Confirm onBack={() => setStep('chat')} onConfirm={verify} />}
           {step === 'verifying' && <Verifying note={note} />}
-          {step === 'verified' && <Verified method={method} />}
-          {step === 'code' && <CodeScreen code={code} />}
+          {step === 'verified' && <Verified />}
           {step === 'blocked' && <Blocked reason={blockReason} />}
         </div>
       </div>
@@ -332,17 +305,15 @@ function Verifying({ note }: { note: string }) {
   )
 }
 
-function Verified({ method }: { method: 'bluetooth' | 'gps' }) {
+function Verified() {
   return (
     <div className="app-card">
       <div className="app-icon ok" aria-hidden="true">✓</div>
-      <h3>You're verified</h3>
-      <p className="app-muted">
-        You're now signed in on your computer — no code needed.
-      </p>
+      <h3>Verified (demo)</h3>
+      <p className="app-muted">You're now signed in on your computer.</p>
       <p className="app-muted tiny">
-        This on-screen demo stands in for the app's {method === 'bluetooth' ? 'Bluetooth' : 'location'} check. With the
-        real app, pair over Bluetooth from the sign-in on the left.
+        This is the on-screen walkthrough — it doesn't perform a real proximity check. With the real app, the actual
+        Bluetooth verification is the "Pair with my phone" button on the sign-in to the left.
       </p>
     </div>
   )
@@ -370,18 +341,6 @@ function Blocked({ reason }: { reason: BlockReason }) {
         </li>
         {reason === 'extortion' && <li>If someone is threatening you, contact local law enforcement.</li>}
       </ol>
-    </div>
-  )
-}
-
-function CodeScreen({ code }: { code: string }) {
-  return (
-    <div className="app-card">
-      <div className="app-icon" aria-hidden="true">🔑</div>
-      <h3>Enter this code on your computer</h3>
-      <p className="app-muted">We couldn't confirm you by Bluetooth or location, so type this code into the sign-in.</p>
-      <p className="app-code">{code ? `${code.slice(0, 3)} ${code.slice(3)}` : '· · ·'}</p>
-      <p className="app-muted tiny">Never share this code with anyone.</p>
     </div>
   )
 }

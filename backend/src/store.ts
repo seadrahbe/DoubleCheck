@@ -10,7 +10,7 @@ export type Channel = "sms" | "email" | "app";
 //   blocked  – Big Fish detected extortion/coercion; the login is blocked and the
 //              person is being connected to support
 export type SessionStatus = "pending" | "approved" | "code" | "blocked";
-export type VerifyMethod = "bluetooth" | "gps" | "code";
+export type VerifyMethod = "bluetooth" | "gps" | "code" | "demo";
 
 export interface LoginAttempt {
   token: string;
