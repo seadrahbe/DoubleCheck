@@ -33,16 +33,22 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 // Must be called straight from a click handler — the chooser needs the gesture.
-export async function pairWithPhone(): Promise<PairResult> {
+// showAll lists every nearby device (not just ones matching our filter), a
+// fallback for iPhones whose advertised service/name the OS doesn't surface.
+export async function pairWithPhone({ showAll = false } = {}): Promise<PairResult> {
   const unsupported = bluetoothUnsupportedReason()
   if (unsupported) return { ok: false, reason: 'unsupported', message: unsupported }
 
   let device: BluetoothDevice
   try {
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [KEY_SERVICE_UUID] }, { namePrefix: 'DC-' }, { namePrefix: 'DoubleCheck' }],
-      optionalServices: [KEY_SERVICE_UUID],
-    })
+    device = await navigator.bluetooth.requestDevice(
+      showAll
+        ? { acceptAllDevices: true, optionalServices: [KEY_SERVICE_UUID] }
+        : {
+            filters: [{ services: [KEY_SERVICE_UUID] }, { namePrefix: 'DC-' }, { namePrefix: 'DoubleCheck' }],
+            optionalServices: [KEY_SERVICE_UUID],
+          },
+    )
   } catch (err) {
     if (err instanceof DOMException && err.name === 'NotFoundError') {
       return { ok: false, reason: 'cancelled', message: 'No DoubleCheck Key was selected.' }

@@ -84,11 +84,11 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
   }
 
   // Real Bluetooth pairing, from a click so the chooser keeps the user gesture.
-  async function pair(token: string) {
+  async function pair(token: string, showAll = false) {
     setPairError('')
     setPairing(true)
     try {
-      const res = await pairWithPhone()
+      const res = await pairWithPhone({ showAll })
       if (!res.ok) {
         // A cancelled chooser just means "not now" — stay on the waiting screen.
         if (res.reason !== 'cancelled') setPairError(res.message)
@@ -126,9 +126,14 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
         {bluetoothUnavailable ? (
           <p className="muted small-top">Bluetooth isn't available in this browser: {bluetoothUnavailable}</p>
         ) : (
-          <button className="primary" disabled={pairing} onClick={() => pair(state.token)}>
-            {pairing ? 'Looking for your phone…' : 'Pair with my phone'}
-          </button>
+          <>
+            <button className="primary" disabled={pairing} onClick={() => pair(state.token)}>
+              {pairing ? 'Looking for your phone…' : 'Pair with my phone'}
+            </button>
+            <button className="link-button" disabled={pairing} onClick={() => pair(state.token, true)}>
+              Can't find your phone? Show all devices
+            </button>
+          </>
         )}
         {pairError && <p className="error small-top">{pairError}</p>}
       </div>
