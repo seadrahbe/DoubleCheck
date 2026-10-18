@@ -129,24 +129,67 @@ function Home({ location, onOpen }: { location: string; onOpen: () => void }) {
   )
 }
 
+// The real app detects an active call (CallKit) and asks the backend whether
+// it's genuinely from Sound. A Sound call passes silently; a non-Sound call
+// warns and asks the member to hang up. Here the call state is simulated.
 function CallCheck({ onContinue }: { onContinue: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [warn, setWarn] = useState(false)
+
+  async function simulate(caller: 'none' | 'sound' | 'unknown') {
+    setBusy(true)
+    try {
+      const r = await api.callCheck(caller)
+      // Not on a call, or verified as a Sound call → no warning, carry on.
+      if (!r.onCall || r.isSound) onContinue()
+      else setWarn(true)
+    } catch {
+      onContinue()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const callLine = (
+    <p className="app-muted tiny">
+      Unsure if it's us? Call the real {BANK_NAME} at <a href={`tel:${SUPPORT_PHONE}`}>{SUPPORT_PHONE}</a>.
+    </p>
+  )
+
+  if (warn) {
+    return (
+      <div className="app-card">
+        <div className="app-icon" aria-hidden="true">⚠️</div>
+        <h3>You're on a call with someone outside {BANK_NAME}</h3>
+        <p className="app-muted">
+          Please hang up before completing verification. {BANK_NAME} will never need to stay on the line while you sign
+          in.
+        </p>
+        <button className="app-btn" onClick={onContinue}>
+          I've hung up — continue
+        </button>
+        {callLine}
+      </div>
+    )
+  }
+
   return (
     <div className="app-card">
       <div className="app-icon" aria-hidden="true">📞</div>
-      <h3>Are you on a phone or video call right now?</h3>
+      <h3>Checking for an active call…</h3>
       <p className="app-muted">
-        If someone is on a call guiding you through this login, please hang up before continuing. A real bank or agency
-        will never need to stay on the line while you log in.
+        The app detects an active call and checks whether it's really from {BANK_NAME}. Simulate the call state:
       </p>
-      <button className="app-btn" onClick={onContinue}>
-        No, I'm not on a call
+      <button className="app-btn" disabled={busy} onClick={() => simulate('none')}>
+        Not on a call
       </button>
-      <button className="app-btn ghost" onClick={onContinue}>
-        I was — I've hung up now
+      <button className="app-btn ghost" disabled={busy} onClick={() => simulate('sound')}>
+        On a call with {BANK_NAME}
       </button>
-      <p className="app-muted tiny">
-        Unsure if it's us? Call the real {BANK_NAME} at <a href={`tel:${SUPPORT_PHONE}`}>{SUPPORT_PHONE}</a>.
-      </p>
+      <button className="app-btn ghost" disabled={busy} onClick={() => simulate('unknown')}>
+        On a call with an unknown number
+      </button>
+      {callLine}
     </div>
   )
 }

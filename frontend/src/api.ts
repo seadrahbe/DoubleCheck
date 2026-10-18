@@ -30,6 +30,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // Checks whether an in-progress call is really from Sound (the bank's own
+  // records would answer this). `caller` simulates what the app detected.
+  callCheck: (caller: 'none' | 'sound' | 'unknown') =>
+    request<{ onCall: boolean; isSound: boolean }>('/call-check', {
+      method: 'POST',
+      body: JSON.stringify({ caller }),
+    }),
   // Starts a flagged-login session for the app flow (real app or on-screen simulator).
   flaggedLogin: () => request<{ token: string; location: string; ip: string }>('/flagged-login', { method: 'POST' }),
   // Big Fish support chat. `action` drives the flow (continue / proceed / block),

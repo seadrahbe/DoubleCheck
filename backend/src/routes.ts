@@ -14,6 +14,18 @@ const newMfaCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
 const sha256 = (s: string) => createHash("sha256").update(s).digest();
 const sameSecret = (a: string, b: string) => timingSafeEqual(sha256(a), sha256(b));
 
+// "Is this call really from us?" verifier. In production this would consult
+// Sound's live outreach records for the member (the bank knows its own calls);
+// here the simulated `caller` stands in for what that lookup would return.
+//   caller: "sound"   → a genuine Sound Credit Union call  (no warning)
+//   caller: "unknown" → someone not part of Sound          (warn, ask to hang up)
+//   anything else     → not on a call                       (no warning)
+router.post("/call-check", (req, res) => {
+  const caller = req.body?.caller;
+  const onCall = caller === "sound" || caller === "unknown";
+  res.json({ onCall, isSound: caller === "sound" });
+});
+
 // Creates a flagged-login attempt for the app flow (the on-screen simulator and
 // the native app): returns the token plus where the suspicious log-in came from.
 router.post("/flagged-login", async (_req, res) => {
