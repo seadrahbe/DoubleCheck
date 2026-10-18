@@ -53,6 +53,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ method }),
     }),
+  // Web submits a real Bluetooth proof (rotating code) read from the phone.
+  sessionBluetooth: (token: string, proof: string) =>
+    request<{ ok: true }>(`/session/${encodeURIComponent(token)}/bluetooth`, {
+      method: 'POST',
+      body: JSON.stringify({ proof }),
+    }),
   // App issues a one-time code only when Bluetooth and GPS both failed.
   issueCode: (token: string) =>
     request<{ code: string }>(`/issue-code/${encodeURIComponent(token)}`, { method: 'POST' }),

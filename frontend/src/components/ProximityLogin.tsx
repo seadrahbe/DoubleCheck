@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api, type BlockReason } from '../api'
 import { APP_NAME, SUPPORT_NAME, SUPPORT_PHONE } from '../brand'
+import { bluetoothUnsupportedReason, pairWithPhone } from '../bluetooth'
 
 // Demo credentials that count as "correct" for this prototype.
 const DEMO_EMAIL = 'demo@soundcreditunion.example'
@@ -33,6 +34,9 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
   const [email, setEmail] = useState(DEMO_EMAIL)
   const [password, setPassword] = useState(DEMO_PASSWORD)
   const [codeInput, setCodeInput] = useState('')
+  const [pairing, setPairing] = useState(false)
+  const [pairError, setPairError] = useState('')
+  const bluetoothUnavailable = bluetoothUnsupportedReason()
 
   // While waiting, poll the session until the app verifies it (or issues a code).
   useEffect(() => {
@@ -79,6 +83,26 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
     }
   }
 
+  // Real Bluetooth pairing, from a click so the chooser keeps the user gesture.
+  async function pair(token: string) {
+    setPairError('')
+    setPairing(true)
+    try {
+      const res = await pairWithPhone()
+      if (!res.ok) {
+        // A cancelled chooser just means "not now" — stay on the waiting screen.
+        if (res.reason !== 'cancelled') setPairError(res.message)
+        return
+      }
+      await api.sessionBluetooth(token, res.proof)
+      onSignedIn({ email, method: 'bluetooth', at: new Date() })
+    } catch (err) {
+      setPairError((err as Error).message)
+    } finally {
+      setPairing(false)
+    }
+  }
+
   async function submitCode(e: FormEvent) {
     e.preventDefault()
     if (state.step !== 'enter-code') return
@@ -96,9 +120,17 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
         <div className="app-spinner" aria-hidden="true" />
         <h2 className="section-title">Verify this sign-in</h2>
         <p className="muted small-top">
-          This login was flagged. Open your <strong>{APP_NAME}</strong> and verify it's you — we'll sign you in
-          automatically once the app confirms you're nearby.
+          This login was flagged. Open your <strong>{APP_NAME}</strong> on your phone, then pair it to confirm you're
+          here. No app? Use the phone on the right to try it.
         </p>
+        {bluetoothUnavailable ? (
+          <p className="muted small-top">Bluetooth isn't available in this browser: {bluetoothUnavailable}</p>
+        ) : (
+          <button className="primary" disabled={pairing} onClick={() => pair(state.token)}>
+            {pairing ? 'Looking for your phone…' : 'Pair with my phone'}
+          </button>
+        )}
+        {pairError && <p className="error small-top">{pairError}</p>}
       </div>
     )
   }

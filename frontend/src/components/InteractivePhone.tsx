@@ -292,8 +292,11 @@ function Verified({ method }: { method: 'bluetooth' | 'gps' }) {
       <div className="app-icon ok" aria-hidden="true">✓</div>
       <h3>You're verified</h3>
       <p className="app-muted">
-        Confirmed you're nearby by {method === 'bluetooth' ? 'Bluetooth' : 'your location'}. You're now signed in on
-        your computer — no code needed.
+        You're now signed in on your computer — no code needed.
+      </p>
+      <p className="app-muted tiny">
+        This on-screen demo stands in for the app's {method === 'bluetooth' ? 'Bluetooth' : 'location'} check. With the
+        real app, pair over Bluetooth from the sign-in on the left.
       </p>
     </div>
   )

@@ -151,6 +151,45 @@ router.post("/proximity/verify", (req, res) => {
   res.json({ result: "approved" });
 });
 
+// Real Bluetooth verification for a web login session: the web page scans for
+// the user's DoubleCheck Key (the app broadcasting over BLE), reads its rotating
+// code (or static key), and submits it here. A valid proof approves the session.
+router.post("/session/:token/bluetooth", (req, res) => {
+  const attempt = peekAttempt(req.params.token);
+  if (!attempt) {
+    res.status(404).json({ error: "This login session has expired." });
+    return;
+  }
+  if (attempt.status === "blocked") {
+    res.status(409).json({ error: "This login was blocked." });
+    return;
+  }
+  if (!config.authDeviceKey) {
+    res.status(503).json({ error: "AUTH_DEVICE_KEY is not set in backend/.env" });
+    return;
+  }
+  const proof = String(req.body?.proof ?? "");
+  const now = Date.now();
+  let ok = false;
+  if (CODE_PATTERN.test(proof)) {
+    const step = matchProximityCode(proof, config.authDeviceKey, now);
+    if (step !== null && step > lastUsedStep) {
+      lastUsedStep = step;
+      ok = true;
+    }
+  } else if (proof) {
+    ok = sameSecret(proof, config.authDeviceKey);
+  }
+  if (!ok) {
+    res.status(400).json({ error: "Couldn't confirm your key. Make sure your app is open and nearby, then try again." });
+    return;
+  }
+  attempt.status = "approved";
+  attempt.method = "bluetooth";
+  console.log("[session] verified by Bluetooth: login approved");
+  res.json({ ok: true });
+});
+
 // Big Fish support chat. The app opens this when a log-in is flagged; the token
 // ties the conversation to the flagged attempt. If Big Fish concludes the person
 // is being extorted/coerced, it escalates: the session is blocked and the app
