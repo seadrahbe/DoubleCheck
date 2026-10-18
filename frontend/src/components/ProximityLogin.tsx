@@ -1,120 +1,127 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api'
-import { bluetoothUnsupportedReason, checkProximity } from '../bluetooth'
+import { APP_NAME } from '../brand'
 
 // Demo credentials that count as "correct" for this prototype.
 const DEMO_EMAIL = 'demo@northwind.example'
 const DEMO_PASSWORD = 'hunter22'
 
-type Stage = 'bluetooth' | 'gps' | 'mfa'
-
 type State =
   | { step: 'creds'; error?: string }
-  | { step: 'verifying'; stage: Stage }
-  | { step: 'mfa'; code: string }
+  | { step: 'waiting'; token: string }
+  | { step: 'enter-code'; token: string; error?: string }
   | { step: 'error'; message: string }
 
 export interface SignedInInfo {
   email: string
-  method: 'bluetooth' | 'gps'
+  method: 'bluetooth' | 'gps' | 'code'
   at: Date
 }
 
-// Mock bank sign-in. Correct email + password advances to verification, which
-// confirms the account owner is present by the strongest available means:
-// Bluetooth proximity → GPS fallback → a one-time MFA code if neither is available.
-export default function ProximityLogin({ onSignedIn }: { onSignedIn: (info: SignedInInfo) => void }) {
+interface Props {
+  // Hands the started session to the page so the app (phone) can verify it.
+  onSession: (token: string, location: string) => void
+  onSignedIn: (info: SignedInInfo) => void
+}
+
+// Mock bank sign-in. Correct credentials don't log you in directly — the attempt
+// is flagged, and you verify in the DoubleCheck app. The web only shows a code
+// field if the app can't confirm you by Bluetooth or GPS.
+export default function ProximityLogin({ onSession, onSignedIn }: Props) {
   const [state, setState] = useState<State>({ step: 'creds' })
   const [email, setEmail] = useState(DEMO_EMAIL)
   const [password, setPassword] = useState(DEMO_PASSWORD)
+  const [codeInput, setCodeInput] = useState('')
 
-  // Called straight from the form submit so the Bluetooth chooser keeps the
-  // click's user gesture (requestDevice is the first thing awaited).
-  async function verify() {
-    // 1. Bluetooth, when the browser supports it.
-    if (!bluetoothUnsupportedReason()) {
-      setState({ step: 'verifying', stage: 'bluetooth' })
-      const proximity = await checkProximity()
-      if (proximity.ok) {
-        try {
-          const res = await api.verifyProximity(proximity.proof)
-          if (res.result === 'approved') {
-            onSignedIn({ email, method: 'bluetooth', at: new Date() })
-            return
-          }
-        } catch {
-          // fall through to GPS
+  // While waiting, poll the session until the app verifies it (or issues a code).
+  useEffect(() => {
+    if (state.step !== 'waiting') return
+    const token = state.token
+    let active = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const poll = async () => {
+      try {
+        const s = await api.sessionStatus(token)
+        if (!active) return
+        if (s.status === 'approved') {
+          onSignedIn({ email, method: s.method === 'gps' || s.method === 'code' ? s.method : 'bluetooth', at: new Date() })
+        } else if (s.status === 'code') {
+          setState({ step: 'enter-code', token })
+        } else {
+          timer = setTimeout(poll, 1500)
         }
-      }
-      // Bluetooth available but didn't verify (no phone, cancelled, mismatch) → GPS.
-    }
-
-    // 2. GPS fallback.
-    if ('geolocation' in navigator) {
-      setState({ step: 'verifying', stage: 'gps' })
-      const located = await new Promise<boolean>((resolve) =>
-        navigator.geolocation.getCurrentPosition(
-          () => resolve(true),
-          () => resolve(false),
-          { timeout: 8000 },
-        ),
-      )
-      if (located) {
-        onSignedIn({ email, method: 'gps', at: new Date() })
-        return
+      } catch (err) {
+        if (active) setState({ step: 'error', message: (err as Error).message })
       }
     }
+    poll()
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
+  }, [state, email, onSignedIn])
 
-    // 3. Neither available → one-time MFA code.
-    setState({ step: 'verifying', stage: 'mfa' })
+  async function signIn(e: FormEvent) {
+    e.preventDefault()
+    if (email.trim() !== DEMO_EMAIL || password !== DEMO_PASSWORD) {
+      setState({ step: 'creds', error: 'Incorrect email or password.' })
+      return
+    }
     try {
-      const { token } = await api.flaggedLogin()
-      const { code } = await api.issueCode(token)
-      setState({ step: 'mfa', code })
+      const fl = await api.flaggedLogin()
+      onSession(fl.token, fl.location)
+      setState({ step: 'waiting', token: fl.token })
     } catch (err) {
       setState({ step: 'error', message: (err as Error).message })
     }
   }
 
-  function signIn(e: FormEvent) {
+  async function submitCode(e: FormEvent) {
     e.preventDefault()
-    if (email.trim() === DEMO_EMAIL && password === DEMO_PASSWORD) {
-      verify()
-    } else {
-      setState({ step: 'creds', error: 'Incorrect email or password.' })
+    if (state.step !== 'enter-code') return
+    try {
+      await api.submitSessionCode(state.token, codeInput)
+      onSignedIn({ email, method: 'code', at: new Date() })
+    } catch (err) {
+      setState({ step: 'enter-code', token: state.token, error: (err as Error).message })
     }
   }
 
-  if (state.step === 'verifying') {
-    const copy: Record<Stage, string> = {
-      bluetooth: 'Confirming your phone is nearby over Bluetooth…',
-      gps: 'Bluetooth unavailable. Checking your location…',
-      mfa: 'Bluetooth and location unavailable. Sending a one-time code…',
-    }
+  if (state.step === 'waiting') {
     return (
       <div className="login verify-box">
         <div className="app-spinner" aria-hidden="true" />
-        <h2 className="section-title">Verifying it's you</h2>
-        <p className="muted small-top">{copy[state.stage]}</p>
+        <h2 className="section-title">Verify this sign-in</h2>
+        <p className="muted small-top">
+          This login was flagged. Open your <strong>{APP_NAME}</strong> and verify it's you — we'll sign you in
+          automatically once the app confirms you're nearby.
+        </p>
       </div>
     )
   }
 
-  if (state.step === 'mfa') {
+  if (state.step === 'enter-code') {
     return (
-      <div className="login">
-        <h2 className="section-title">Enter your one-time code</h2>
+      <form className="login" onSubmit={submitCode}>
+        <h2 className="section-title">Enter the code from your app</h2>
         <p className="muted">
-          We couldn't confirm your phone by Bluetooth or location, so here's a one-time code. Enter it to finish signing
-          in, and never share it with anyone.
+          Your app couldn't confirm you by Bluetooth or location, so it's showing a one-time code. Type it here to
+          finish signing in.
         </p>
-        <p className="code">
-          {state.code.slice(0, 3)} {state.code.slice(3)}
-        </p>
-        <button className="link-button" onClick={() => setState({ step: 'creds' })}>
-          Start over
+        <input
+          className="code-input"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          placeholder="000 000"
+          value={codeInput}
+          onChange={(e) => setCodeInput(e.target.value)}
+          aria-label="One-time code"
+        />
+        <button className="primary" type="submit" disabled={!codeInput.trim()}>
+          Sign in
         </button>
-      </div>
+        {state.error && <p className="error small-top">{state.error}</p>}
+      </form>
     )
   }
 
@@ -148,8 +155,8 @@ export default function ProximityLogin({ onSignedIn }: { onSignedIn: (info: Sign
         <p className="error small-top">{state.error}</p>
       ) : (
         <p className="muted small-top">
-          After your password, we confirm it's really you — by Bluetooth if your phone is nearby, your location if not,
-          or a one-time code as a last resort.
+          After your password, flagged sign-ins are verified in the {APP_NAME} — by Bluetooth, your location, or a
+          one-time code as a last resort. The code is never shown here.
         </p>
       )}
     </form>

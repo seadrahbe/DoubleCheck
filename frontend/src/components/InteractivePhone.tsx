@@ -1,70 +1,72 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, type ChatTurn } from '../api'
 import { BANK_NAME } from '../brand'
 
-// An on-screen stand-in for the native DoubleCheck app, so people who can't
-// install it can still walk the whole flow: flagged login → check for an active
-// call → Big Fish support chat → confirm → verify (Bluetooth/GPS/code) → code.
-type Step = 'loading' | 'home' | 'callcheck' | 'chat' | 'confirm' | 'verifying' | 'code' | 'error'
+// On-screen stand-in for the native DoubleCheck app. It verifies the login the
+// web card (left) started, sharing one session token: flagged login → check for
+// an active call → Big Fish chat → confirm → verify (Bluetooth/GPS) → or, only if
+// both fail, a one-time code the user types on the computer.
+type Step = 'idle' | 'home' | 'callcheck' | 'chat' | 'confirm' | 'verifying' | 'verified' | 'code' | 'error'
 
-// Starter prompts the user can tap; the small "log in" option lives separately.
 const CHIPS = ['I need support', 'How can I tell if a call is real?', 'Warning signs of romantic extortion']
 
-export default function InteractivePhone() {
-  const [step, setStep] = useState<Step>('loading')
-  const [token, setToken] = useState('')
-  const [location, setLocation] = useState('an unfamiliar location')
+interface Session {
+  token: string
+  location: string
+}
+
+// Keyed by session token in the parent, so a new login remounts this fresh.
+export default function InteractivePhone({ session }: { session: Session | null }) {
+  const [step, setStep] = useState<Step>(session ? 'home' : 'idle')
+  const [note, setNote] = useState('')
+  const [method, setMethod] = useState<'bluetooth' | 'gps'>('bluetooth')
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
-  // Stable so Verifying's effect depends on it without re-running on re-render.
-  const toCode = useCallback(() => setStep('code'), [])
 
-  async function start() {
-    setStep('loading')
-    try {
-      const res = await api.flaggedLogin()
-      setToken(res.token)
-      setLocation(res.location)
-      setStep('home')
-    } catch (err) {
-      setError((err as Error).message)
-      setStep('error')
-    }
-  }
+  const token = session?.token ?? ''
+  const location = session?.location ?? 'an unfamiliar location'
 
-  // Issue the one-time code from the confirm click (an event handler runs once,
-  // unlike an effect, which StrictMode double-invokes and would use up the token).
-  async function confirmAndVerify() {
+  // Runs once from the confirm click (not an effect), so the single-use code
+  // endpoint is never hit twice by StrictMode.
+  async function verify() {
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
     setStep('verifying')
     try {
+      setNote('Checking your DoubleCheck Key over Bluetooth…')
+      await wait(1000)
+      if ('bluetooth' in navigator) {
+        await api.verifySession(token, 'bluetooth')
+        setMethod('bluetooth')
+        setStep('verified')
+        return
+      }
+      setNote('Bluetooth unavailable. Checking your location…')
+      await wait(800)
+      if ('geolocation' in navigator) {
+        const located = await new Promise<boolean>((resolve) =>
+          navigator.geolocation.getCurrentPosition(
+            () => resolve(true),
+            () => resolve(false),
+            { timeout: 8000 },
+          ),
+        )
+        if (located) {
+          await api.verifySession(token, 'gps')
+          setMethod('gps')
+          setStep('verified')
+          return
+        }
+      }
+      setNote('Bluetooth and location unavailable. Sending a one-time code…')
+      await wait(600)
       const res = await api.issueCode(token)
       setCode(res.code)
+      setStep('code')
     } catch (err) {
       setError((err as Error).message)
       setStep('error')
     }
   }
-
-  // Fetch on mount without a synchronous setState (state starts at 'loading').
-  useEffect(() => {
-    let cancelled = false
-    api
-      .flaggedLogin()
-      .then((res) => {
-        if (cancelled) return
-        setToken(res.token)
-        setLocation(res.location)
-        setStep('home')
-      })
-      .catch((err: Error) => {
-        if (cancelled) return
-        setError(err.message)
-        setStep('error')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   return (
     <div className="phone" aria-label="Interactive app demo">
@@ -75,26 +77,28 @@ export default function InteractivePhone() {
           <span aria-hidden="true">▂▄▆ ▮</span>
         </div>
         <div className="app-body">
-          {step === 'loading' && <p className="app-muted center">Connecting…</p>}
+          {step === 'idle' && (
+            <div className="app-card">
+              <div className="app-icon" aria-hidden="true">🔒</div>
+              <h3>{BANK_NAME}</h3>
+              <p className="app-muted">Enter your password on the left to start a sign-in. This app then verifies it.</p>
+            </div>
+          )}
           {step === 'error' && (
             <div className="center">
               <p className="app-error">{error}</p>
-              <button className="app-btn" onClick={start}>
-                Try again
-              </button>
             </div>
           )}
           {step === 'home' && <Home location={location} onOpen={() => setStep('callcheck')} />}
           {step === 'callcheck' && <CallCheck onContinue={() => setStep('chat')} />}
-          {step === 'chat' && (
-            <Chat token={token} location={location} onLogIn={() => setStep('confirm')} />
-          )}
-          {step === 'confirm' && <Confirm onBack={() => setStep('chat')} onConfirm={confirmAndVerify} />}
-          {step === 'verifying' && <Verifying onDone={toCode} />}
-          {step === 'code' && <CodeScreen code={code} onDone={start} />}
+          {step === 'chat' && <Chat token={token} location={location} onLogIn={() => setStep('confirm')} />}
+          {step === 'confirm' && <Confirm onBack={() => setStep('chat')} onConfirm={verify} />}
+          {step === 'verifying' && <Verifying note={note} />}
+          {step === 'verified' && <Verified method={method} />}
+          {step === 'code' && <CodeScreen code={code} />}
         </div>
       </div>
-      <p className="app-caption">Interactive demo — no app install or Bluetooth needed.</p>
+      <p className="app-caption">Interactive demo — this is the app half of the sign-in on the left.</p>
     </div>
   )
 }
@@ -108,9 +112,7 @@ function Home({ location, onOpen }: { location: string; onOpen: () => void }) {
           <span className="app-badge" aria-hidden="true">✓✓</span>
           {BANK_NAME} · now
         </span>
-        <span className="app-notif-body">
-          We flagged a login from {location}. Tap to verify it's really you.
-        </span>
+        <span className="app-notif-body">We flagged a login from {location}. Tap to verify it's really you.</span>
       </button>
     </div>
   )
@@ -157,7 +159,7 @@ function Chat({ token, location, onLogIn }: { token: string; location: string; o
       const res = await api.bigFish(token, next)
       setTurns((t) => [...t, { role: 'assistant', content: res.reply }])
     } catch {
-      setTurns((t) => [...t, { role: 'assistant', content: "Sorry, I had trouble responding. Please try again." }])
+      setTurns((t) => [...t, { role: 'assistant', content: 'Sorry, I had trouble responding. Please try again.' }])
     } finally {
       setBusy(false)
     }
@@ -230,71 +232,37 @@ function Confirm({ onBack, onConfirm }: { onBack: () => void; onConfirm: () => v
   )
 }
 
-// Shows the real fallback chain by capability: Bluetooth → GPS → send the code.
-// The code itself was already issued by the confirm handler; this only animates.
-function Verifying({ onDone }: { onDone: () => void }) {
-  const [lines, setLines] = useState<string[]>([])
-
-  // onDone is stable (useCallback in the parent), so this runs once.
-  useEffect(() => {
-    let cancelled = false
-    const add = (s: string) => !cancelled && setLines((l) => [...l, s])
-    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-    async function run() {
-      add('Checking your DoubleCheck Key over Bluetooth…')
-      await wait(1100)
-      if ('bluetooth' in navigator) {
-        add('Verified your key is nearby over Bluetooth ✓')
-      } else if ('geolocation' in navigator) {
-        add('Bluetooth unavailable. Checking your location…')
-        await wait(900)
-        await new Promise<void>((resolve) =>
-          navigator.geolocation.getCurrentPosition(
-            () => resolve(),
-            () => resolve(),
-            { timeout: 4000 },
-          ),
-        )
-        add('Verified by your location ✓')
-      } else {
-        add('Bluetooth and location unavailable. Sending your code…')
-      }
-      await wait(900)
-      if (!cancelled) onDone()
-    }
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [onDone])
-
+function Verifying({ note }: { note: string }) {
   return (
     <div className="app-card">
       <div className="app-spinner" aria-hidden="true" />
       <h3>Verifying it's you</h3>
-      <div className="app-steps">
-        {lines.map((l, i) => (
-          <p key={i} className={l.includes('✓') ? 'ok' : ''}>
-            {l}
-          </p>
-        ))}
-      </div>
+      <p className="app-muted">{note}</p>
     </div>
   )
 }
 
-function CodeScreen({ code, onDone }: { code: string; onDone: () => void }) {
+function Verified({ method }: { method: 'bluetooth' | 'gps' }) {
   return (
     <div className="app-card">
       <div className="app-icon ok" aria-hidden="true">✓</div>
       <h3>You're verified</h3>
-      <p className="app-muted">Here's your one-time code. Never share it with anyone.</p>
+      <p className="app-muted">
+        Confirmed you're nearby by {method === 'bluetooth' ? 'Bluetooth' : 'your location'}. You're now signed in on
+        your computer — no code needed.
+      </p>
+    </div>
+  )
+}
+
+function CodeScreen({ code }: { code: string }) {
+  return (
+    <div className="app-card">
+      <div className="app-icon" aria-hidden="true">🔑</div>
+      <h3>Enter this code on your computer</h3>
+      <p className="app-muted">We couldn't confirm you by Bluetooth or location, so type this code into the sign-in.</p>
       <p className="app-code">{code ? `${code.slice(0, 3)} ${code.slice(3)}` : '· · ·'}</p>
-      <p className="app-muted tiny">This is how the code reaches you when your phone can't be auto-verified nearby.</p>
-      <button className="app-btn ghost" onClick={onDone}>
-        Done
-      </button>
+      <p className="app-muted tiny">Never share this code with anyone.</p>
     </div>
   )
 }

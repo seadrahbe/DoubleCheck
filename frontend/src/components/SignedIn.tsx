@@ -1,10 +1,25 @@
 import { BANK_NAME } from '../brand'
 import type { SignedInInfo } from './ProximityLogin'
 
-// Where the user lands after their phone is verified nearby: no survey, no
-// code, just signed in.
+// Where the user lands after the app verifies the flagged login.
+const VERIFIED: Record<SignedInInfo['method'], { title: string; detail: (bank: string) => string }> = {
+  bluetooth: {
+    title: 'Bluetooth proximity',
+    detail: (bank) => `Your ${bank} phone was confirmed nearby over Bluetooth, so no one-time code was needed`,
+  },
+  gps: {
+    title: 'your location',
+    detail: () => `Your location was confirmed nearby, so no one-time code was needed`,
+  },
+  code: {
+    title: 'a one-time code',
+    detail: () => `You entered the one-time code from your app`,
+  },
+}
+
 export default function SignedIn({ info, onSignOut }: { info: SignedInInfo; onSignOut: () => void }) {
   const time = info.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const v = VERIFIED[info.method]
   return (
     <section className="card signed-in">
       <div className="success-badge" aria-hidden="true">✓</div>
@@ -15,12 +30,9 @@ export default function SignedIn({ info, onSignOut }: { info: SignedInInfo; onSi
       <div className="verified">
         <span className="verified-icon" aria-hidden="true">🛡</span>
         <div>
-          <strong>Verified by {info.method === 'bluetooth' ? 'Bluetooth proximity' : 'your location'}</strong>
+          <strong>Verified by {v.title}</strong>
           <p className="muted small-top">
-            {info.method === 'bluetooth'
-              ? `Your ${BANK_NAME} phone was confirmed nearby over Bluetooth`
-              : `Your location was confirmed nearby`}{' '}
-            at {time}, so no one-time code was needed.
+            {v.detail(BANK_NAME)} at {time}.
           </p>
         </div>
       </div>

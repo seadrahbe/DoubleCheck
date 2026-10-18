@@ -68,9 +68,27 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ messages }),
     }),
-  // Final step of the app flow: issues the one-time MFA code.
+  // --- App-driven login handshake ---
+  // Web polls the session while the user verifies in the app.
+  sessionStatus: (token: string) =>
+    request<{ status: 'pending' | 'approved' | 'code'; method: 'bluetooth' | 'gps' | 'code' | null }>(
+      `/session/${encodeURIComponent(token)}`,
+    ),
+  // App marks the session verified after a Bluetooth or GPS proximity check.
+  verifySession: (token: string, method: 'bluetooth' | 'gps') =>
+    request<{ ok: true }>(`/session/${encodeURIComponent(token)}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ method }),
+    }),
+  // App issues a one-time code only when Bluetooth and GPS both failed.
   issueCode: (token: string) =>
     request<{ code: string }>(`/issue-code/${encodeURIComponent(token)}`, { method: 'POST' }),
+  // Web submits the code the user read off their phone.
+  submitSessionCode: (token: string, code: string) =>
+    request<{ ok: true }>(`/session/${encodeURIComponent(token)}/code`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
 }
 
 export interface ChatTurn {

@@ -6,7 +6,7 @@ import { CODE_PATTERN, matchProximityCode } from "./proximityCode.js";
 import { questionsFor } from "./questions.js";
 import { sendEmail } from "./email.js";
 import { bigFishReply, type ChatMessage } from "./bigfish.js";
-import { createAttempt, findAttempt, type Channel } from "./store.js";
+import { createAttempt, findAttempt, peekAttempt, type Channel } from "./store.js";
 
 export const router = Router();
 
@@ -90,15 +90,63 @@ router.post("/flagged-login", async (_req, res) => {
   res.status(201).json({ token: attempt.token, location, ip });
 });
 
-// Final step of the app flow: issues the one-time MFA code (single use per token).
-router.post("/issue-code/:token", (req, res) => {
-  const found = findAttempt(req.params.token);
-  if (!found.ok) {
-    res.status(found.status).json({ error: found.error });
+// --- App-driven login handshake -------------------------------------------
+// The web login starts a session (flagged-login above), then polls this while
+// the user verifies in the app. The app marks the session verified, or — if it
+// can't confirm by Bluetooth or GPS — issues a code the user types on the web.
+
+// Web polls this. Never returns the code itself.
+router.get("/session/:token", (req, res) => {
+  const attempt = peekAttempt(req.params.token);
+  if (!attempt) {
+    res.status(404).json({ error: "This login session has expired." });
     return;
   }
-  found.attempt.used = true;
-  res.json({ code: newMfaCode() });
+  res.json({ status: attempt.status, method: attempt.method ?? null });
+});
+
+// App calls this on a successful Bluetooth or GPS proximity check.
+router.post("/session/:token/verify", (req, res) => {
+  const attempt = peekAttempt(req.params.token);
+  if (!attempt) {
+    res.status(404).json({ error: "This login session has expired." });
+    return;
+  }
+  attempt.method = req.body?.method === "gps" ? "gps" : "bluetooth";
+  attempt.status = "approved";
+  console.log(`[session] verified by ${attempt.method}: login approved`);
+  res.json({ ok: true });
+});
+
+// App calls this only when Bluetooth and GPS both failed: issues a code for the
+// user to read off their phone and type into the web login.
+router.post("/issue-code/:token", (req, res) => {
+  const attempt = peekAttempt(req.params.token);
+  if (!attempt) {
+    res.status(404).json({ error: "This login session has expired." });
+    return;
+  }
+  attempt.code = newMfaCode();
+  attempt.status = "code";
+  attempt.method = "code";
+  console.log("[session] Bluetooth and GPS unavailable: issued a one-time code");
+  res.json({ code: attempt.code });
+});
+
+// Web submits the code the user typed. Approves the session when it matches.
+router.post("/session/:token/code", (req, res) => {
+  const attempt = peekAttempt(req.params.token);
+  if (!attempt) {
+    res.status(404).json({ error: "This login session has expired." });
+    return;
+  }
+  const code = String(req.body?.code ?? "").replace(/\s/g, "");
+  if (attempt.code && code === attempt.code) {
+    attempt.status = "approved";
+    res.json({ ok: true });
+  } else {
+    res.status(400).json({ error: "That code isn't right. Check your phone and try again." });
+  }
 });
 
 router.get("/survey/:token", (req, res) => {
