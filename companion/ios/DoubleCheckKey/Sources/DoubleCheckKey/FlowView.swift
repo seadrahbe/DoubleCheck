@@ -42,8 +42,12 @@ struct FlowView: View {
                 ChatView(
                     token: token,
                     location: location,
-                    onProceed: { step = .confirm },
+                    onProceed: {
+                        key.activate() // start broadcasting only now that they're logging in
+                        step = .confirm
+                    },
                     onBlocked: { reason in
+                        key.deactivate()
                         secureReason = reason
                         step = .secure
                     }
@@ -62,6 +66,7 @@ struct FlowView: View {
     }
 
     private func start() async {
+        key.deactivate() // never broadcast until the user chooses to log in
         step = .loading
         do {
             let fl = try await API.flaggedLogin()

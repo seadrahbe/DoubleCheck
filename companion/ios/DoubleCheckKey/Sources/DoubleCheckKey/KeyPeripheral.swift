@@ -27,6 +27,23 @@ final class KeyPeripheral: NSObject, ObservableObject, CBPeripheralManagerDelega
     private var serviceAdded = false
     private var currentStep: UInt64?
     private var timer: Timer?
+    // Broadcasting is off until the user chooses to log in — only then does the
+    // key advertise for the web to pair with.
+    private(set) var active = false
+
+    // Begin advertising the rotating code (call when the user starts a sign-in).
+    func activate() {
+        active = true
+        currentStep = nil
+        refresh()
+    }
+
+    // Stop advertising (call when the flow resets, is blocked, or finishes).
+    func deactivate() {
+        active = false
+        currentStep = nil
+        refresh()
+    }
 
     override init() {
         _secret = Published(initialValue: UserDefaults.standard.string(forKey: "deviceKey") ?? "")
@@ -42,16 +59,28 @@ final class KeyPeripheral: NSObject, ObservableObject, CBPeripheralManagerDelega
     private func refresh() {
         secondsLeft = ProximityCode.secondsLeft()
         let secret = self.secret.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Idle until the user chooses to log in.
+        guard active else {
+            code = ""
+            stopBroadcasting(status: secret.isEmpty
+                ? "Add your device key in Settings."
+                : "Ready — we'll verify when you choose to sign in.")
+            return
+        }
         guard !secret.isEmpty else {
             code = ""
-            stopBroadcasting(status: "Paste your device key to start.")
+            stopBroadcasting(status: "Add your device key in Settings to verify.")
             return
         }
         let step = ProximityCode.step()
-        guard step != currentStep else { return }
-        currentStep = step
-        code = ProximityCode.code(secret: secret, step: step)
-        startBroadcasting()
+        if step != currentStep {
+            currentStep = step
+            code = ProximityCode.code(secret: secret, step: step)
+            startBroadcasting()
+        } else if !isBroadcasting {
+            startBroadcasting()
+        }
     }
 
     private func startBroadcasting() {
