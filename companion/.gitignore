@@ -1,0 +1,4 @@
+# Swift toolchain installer artifacts, accidentally landed here during setup
+swiftly-*.tar.gz
+LICENSE.txt
+swiftly
