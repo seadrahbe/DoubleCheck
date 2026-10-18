@@ -1,0 +1,5 @@
+version: 1
+# Bundle IDs must be unique across Apple: change this if xtool says it's taken.
+bundleID: com.seadrahbe.DoubleCheckKey
+# Merged into the generated Info.plist (adds the Bluetooth permission text).
+infoPath: Info.plist

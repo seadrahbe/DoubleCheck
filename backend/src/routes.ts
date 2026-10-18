@@ -2,6 +2,7 @@ import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import { config } from "./config.js";
 import { lookupLocation } from "./geo.js";
+import { CODE_PATTERN, matchProximityCode } from "./proximityCode.js";
 import { questionsFor } from "./questions.js";
 import { sendEmail } from "./email.js";
 import { sendSms } from "./sms.js";
@@ -137,21 +138,64 @@ router.post("/survey/:token/answers", (req, res) => {
   res.json({ result: "approved", code: newMfaCode() });
 });
 
-// Bluetooth proximity check. The login page reads the device key off the user's
-// DoubleCheck Key over BLE, which only works within Bluetooth range, and sends it
-// here. A match approves the log-in without the survey; anything else means the
-// page falls back to sending the survey.
+// Says what kind of value the key sent without logging the value itself, to
+// help debug companion setup (the classic mistake is entering the key as Hex).
+function describeMismatch(received: unknown, expected: string): string {
+  if (typeof received !== "string" || received === "") return "The key sent an empty value.";
+  const base = `Received ${received.length} characters, expected ${expected.length}.`;
+  // A key typed into a Hex field arrives as raw bytes, i.e. unprintable characters.
+  if (/[^\x20-\x7e]/.test(received)) {
+    return `${base} Looks like the key was entered as Hex: set the value format to UTF-8/text instead.`;
+  }
+  return base;
+}
+
+// Bluetooth proximity check. The login page gets a proof from the user's
+// DoubleCheck Key over Bluetooth, which only works within Bluetooth range, and
+// sends it here. A match signs the user in without the survey; anything else
+// means the page falls back to sending the survey. Two kinds of proof:
+//   - an 8-digit rotating code (DoubleCheck Key app), read from its broadcast
+//     name without connecting, or from its characteristic
+//   - the static AUTH_DEVICE_KEY (LightBlue / nRF Connect keys)
+const VERIFY_LIMIT = { perWindow: 10, windowMs: 60 * 1000 };
+let verifyTimes: number[] = [];
+let lastUsedStep = -1; // rotating codes are single-use
+
 router.post("/proximity/verify", (req, res) => {
   if (!config.authDeviceKey) {
     res.status(503).json({ error: "AUTH_DEVICE_KEY is not set in backend/.env" });
     return;
   }
-  const deviceKey: unknown = req.body?.deviceKey;
-  if (typeof deviceKey !== "string" || !sameSecret(deviceKey, config.authDeviceKey)) {
-    console.log("[proximity] device key mismatch: falling back to survey");
+  // An 8-digit code would be guessable without a cap on attempts.
+  const now = Date.now();
+  verifyTimes = verifyTimes.filter((t) => now - t < VERIFY_LIMIT.windowMs);
+  if (verifyTimes.length >= VERIFY_LIMIT.perWindow) {
+    res.status(429).json({ error: "Too many sign-in attempts. Wait a minute and try again." });
+    return;
+  }
+  verifyTimes.push(now);
+
+  const proof: unknown = req.body?.proof ?? req.body?.deviceKey;
+  if (typeof proof === "string" && CODE_PATTERN.test(proof)) {
+    const step = matchProximityCode(proof, config.authDeviceKey, now);
+    if (step !== null && step > lastUsedStep) {
+      lastUsedStep = step;
+      console.log("[proximity] rotating code verified: DoubleCheck Key nearby, signed in");
+      res.json({ result: "approved" });
+      return;
+    }
+    console.log(
+      `[proximity] rotating code ${step === null ? "wrong or expired (check both clocks are set automatically)" : "already used"}: falling back to survey`,
+    );
+    res.json({ result: "mismatch", reason: step === null ? "wrong-code" : "code-used" });
+    return;
+  }
+
+  if (typeof proof !== "string" || !sameSecret(proof, config.authDeviceKey)) {
+    console.log(`[proximity] device key mismatch: falling back to survey. ${describeMismatch(proof, config.authDeviceKey)}`);
     res.json({ result: "mismatch" });
     return;
   }
-  console.log("[proximity] DoubleCheck Key verified nearby: log-in approved");
-  res.json({ result: "approved", code: newMfaCode() });
+  console.log("[proximity] static device key verified: DoubleCheck Key nearby, signed in");
+  res.json({ result: "approved" });
 });

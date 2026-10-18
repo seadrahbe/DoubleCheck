@@ -49,10 +49,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ channel }),
     }),
-  verifyProximity: (deviceKey: string) =>
-    request<{ result: 'approved'; code: string } | { result: 'mismatch' }>('/proximity/verify', {
+  verifyProximity: (proof: string) =>
+    request<{ result: 'approved' } | { result: 'mismatch'; reason?: 'wrong-code' | 'code-used' }>('/proximity/verify', {
       method: 'POST',
-      body: JSON.stringify({ deviceKey }),
+      body: JSON.stringify({ proof }),
     }),
   getSurvey: (token: string) => request<SurveyInfo>(`/survey/${encodeURIComponent(token)}`),
   submitAnswer: (token: string, questionId: string, answer: boolean) =>
