@@ -3,10 +3,8 @@ import { Router } from "express";
 import { config } from "./config.js";
 import { lookupLocation } from "./geo.js";
 import { CODE_PATTERN, matchProximityCode } from "./proximityCode.js";
-import { questionsFor } from "./questions.js";
-import { sendEmail } from "./email.js";
 import { bigFishReply, type ChatMessage } from "./bigfish.js";
-import { createAttempt, findAttempt, peekAttempt, type Channel } from "./store.js";
+import { createAttempt, peekAttempt } from "./store.js";
 
 export const router = Router();
 
@@ -16,73 +14,8 @@ const newMfaCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
 const sha256 = (s: string) => createHash("sha256").update(s).digest();
 const sameSecret = (a: string, b: string) => timingSafeEqual(sha256(a), sha256(b));
 
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-
-// Simulates a suspicious login: creates a one-time token and sends the survey
-// link by text (`{ channel: "sms" }`, the default) or email (`{ channel: "email" }`).
-// Once deployed this endpoint is public, so cap how often it can send messages
-// (shared across all callers; resets on restart).
-const SEND_LIMIT = { perWindow: 20, windowMs: 60 * 60 * 1000, minGapMs: 5000 };
-let sendTimes: number[] = [];
-
-function sendAllowed(): boolean {
-  const now = Date.now();
-  sendTimes = sendTimes.filter((t) => now - t < SEND_LIMIT.windowMs);
-  const last = sendTimes.at(-1) ?? 0;
-  if (sendTimes.length >= SEND_LIMIT.perWindow || now - last < SEND_LIMIT.minGapMs) return false;
-  sendTimes.push(now);
-  return true;
-}
-
-router.post("/login-attempts", async (req, res) => {
-  if (!sendAllowed()) {
-    res.status(429).json({ error: "Too many requests. Wait a few seconds and try again." });
-    return;
-  }
-  const channel: Channel = req.body?.channel === "email" ? "email" : "sms";
-  const contact = (channel === "email" ? config.myEmail : config.myPhoneNumber) ?? "";
-  const ip = config.simulatedLoginIp;
-  const location = await lookupLocation(ip);
-  const attempt = createAttempt(channel, contact, ip, location);
-  const link = `${config.frontendUrl}/survey?token=${attempt.token}`;
-
-  const intro =
-    `There has been a new log-in attempt to your account from ${location} (${ip}). ` +
-    `This log-in attempt has been flagged as suspicious. ` +
-    `Please complete a DoubleCheck survey to proceed:`;
-
-  // Text sending was removed (no Twilio): the "sms" channel just returns the
-  // message so the on-screen phone can display it.
-  if (channel === "sms") {
-    res.status(201).json({ channel, sent: false, link, message: `${intro} ${link}` });
-    return;
-  }
-
-  // Email (Resend). No recipient configured → log instead of sending.
-  if (!contact) {
-    console.log(`\n[email] MY_EMAIL not set, would have sent:\n${intro} ${link}\n`);
-    res.status(201).json({ channel, sent: false, link, message: `${intro} ${link}` });
-    return;
-  }
-  try {
-    const { sent } = await sendEmail(
-      contact,
-      "Suspicious log-in attempt: DoubleCheck required",
-      `${intro} ${link}`,
-      `<p>${escapeHtml(intro)}</p><p><a href="${escapeHtml(link)}">Complete your DoubleCheck survey</a></p>` +
-        `<p style="color:#666;font-size:13px">This link expires in 10 minutes and can only be used once.</p>`,
-    );
-    res.status(201).json({ channel, sent, link, message: `${intro} ${link}` });
-  } catch (err) {
-    console.error(`[email] failed:`, err);
-    const reason = err instanceof Error ? err.message : String(err);
-    res.status(502).json({ error: `Failed to send email: ${reason}`, link, message: `${intro} ${link}` });
-  }
-});
-
-// Creates a flagged-login attempt for the on-screen app simulator (and the real
-// app): returns the token plus where the suspicious log-in came from.
+// Creates a flagged-login attempt for the app flow (the on-screen simulator and
+// the native app): returns the token plus where the suspicious log-in came from.
 router.post("/flagged-login", async (_req, res) => {
   const ip = config.simulatedLoginIp;
   const location = await lookupLocation(ip);
@@ -112,6 +45,10 @@ router.post("/session/:token/verify", (req, res) => {
     res.status(404).json({ error: "This login session has expired." });
     return;
   }
+  if (attempt.status === "blocked") {
+    res.status(409).json({ error: "This login was blocked." });
+    return;
+  }
   attempt.method = req.body?.method === "gps" ? "gps" : "bluetooth";
   attempt.status = "approved";
   console.log(`[session] verified by ${attempt.method}: login approved`);
@@ -124,6 +61,10 @@ router.post("/issue-code/:token", (req, res) => {
   const attempt = peekAttempt(req.params.token);
   if (!attempt) {
     res.status(404).json({ error: "This login session has expired." });
+    return;
+  }
+  if (attempt.status === "blocked") {
+    res.status(409).json({ error: "This login was blocked." });
     return;
   }
   attempt.code = newMfaCode();
@@ -140,6 +81,10 @@ router.post("/session/:token/code", (req, res) => {
     res.status(404).json({ error: "This login session has expired." });
     return;
   }
+  if (attempt.status === "blocked") {
+    res.status(409).json({ error: "This login was blocked." });
+    return;
+  }
   const code = String(req.body?.code ?? "").replace(/\s/g, "");
   if (attempt.code && code === attempt.code) {
     attempt.status = "approved";
@@ -147,61 +92,6 @@ router.post("/session/:token/code", (req, res) => {
   } else {
     res.status(400).json({ error: "That code isn't right. Check your phone and try again." });
   }
-});
-
-router.get("/survey/:token", (req, res) => {
-  const found = findAttempt(req.params.token);
-  if (!found.ok) {
-    res.status(found.status).json({ error: found.error });
-    return;
-  }
-  const { attempt } = found;
-  res.json({
-    location: attempt.location,
-    ip: attempt.ip,
-    attemptedAt: new Date(attempt.createdAt).toISOString(),
-    progress: attempt.progress, // lets a refreshed page resume where it left off
-    // Expected answers stay on the server.
-    questions: questionsFor(attempt.location).map(({ id, text }) => ({ id, text })),
-  });
-});
-
-// Answers are checked one at a time, in order, so the survey can stop at the
-// first wrong answer without the expected answers ever reaching the browser.
-router.post("/survey/:token/answers", (req, res) => {
-  const found = findAttempt(req.params.token);
-  if (!found.ok) {
-    res.status(found.status).json({ error: found.error });
-    return;
-  }
-  const { attempt } = found;
-  const { questionId, answer } = req.body ?? {};
-  const questions = questionsFor(attempt.location);
-  const question = questions[attempt.progress];
-  if (typeof answer !== "boolean" || questionId !== question.id) {
-    res.status(400).json({ error: "Unexpected answer." });
-    return;
-  }
-
-  if (answer !== question.expected) {
-    attempt.used = true;
-    const who = attempt.contact || "unknown user";
-    if (question.onWrong === "fraud") {
-      console.log(`[survey] suspected fraud (${question.id}) for ${who}: account locked, flag for follow-up`);
-    } else {
-      console.log(`[survey] ${who} says the log-in attempt wasn't them: attempt blocked`);
-    }
-    res.json({ result: question.onWrong });
-    return;
-  }
-
-  attempt.progress++;
-  if (attempt.progress < questions.length) {
-    res.json({ result: "next" });
-    return;
-  }
-  attempt.used = true;
-  res.json({ result: "approved", code: newMfaCode() });
 });
 
 // Says what kind of value the key sent without logging the value itself, to
@@ -216,13 +106,8 @@ function describeMismatch(received: unknown, expected: string): string {
   return base;
 }
 
-// Bluetooth proximity check. The login page gets a proof from the user's
-// DoubleCheck Key over Bluetooth, which only works within Bluetooth range, and
-// sends it here. A match signs the user in without the survey; anything else
-// means the page falls back to sending the survey. Two kinds of proof:
-//   - an 8-digit rotating code (DoubleCheck Key app), read from its broadcast
-//     name without connecting, or from its characteristic
-//   - the static AUTH_DEVICE_KEY (LightBlue / nRF Connect keys)
+// Bluetooth proximity check for the companion DoubleCheck Key (native app /
+// nRF Connect / LightBlue): verifies the rotating code or the static key.
 const VERIFY_LIMIT = { perWindow: 10, windowMs: 60 * 1000 };
 let verifyTimes: number[] = [];
 let lastUsedStep = -1; // rotating codes are single-use
@@ -246,29 +131,31 @@ router.post("/proximity/verify", (req, res) => {
     const step = matchProximityCode(proof, config.authDeviceKey, now);
     if (step !== null && step > lastUsedStep) {
       lastUsedStep = step;
-      console.log("[proximity] rotating code verified: DoubleCheck Key nearby, signed in");
+      console.log("[proximity] rotating code verified: DoubleCheck Key nearby");
       res.json({ result: "approved" });
       return;
     }
     console.log(
-      `[proximity] rotating code ${step === null ? "wrong or expired (check both clocks are set automatically)" : "already used"}: falling back to survey`,
+      `[proximity] rotating code ${step === null ? "wrong or expired (check both clocks are set automatically)" : "already used"}`,
     );
     res.json({ result: "mismatch", reason: step === null ? "wrong-code" : "code-used" });
     return;
   }
 
   if (typeof proof !== "string" || !sameSecret(proof, config.authDeviceKey)) {
-    console.log(`[proximity] device key mismatch: falling back to survey. ${describeMismatch(proof, config.authDeviceKey)}`);
+    console.log(`[proximity] device key mismatch. ${describeMismatch(proof, config.authDeviceKey)}`);
     res.json({ result: "mismatch" });
     return;
   }
-  console.log("[proximity] static device key verified: DoubleCheck Key nearby, signed in");
+  console.log("[proximity] static device key verified: DoubleCheck Key nearby");
   res.json({ result: "approved" });
 });
 
 // Big Fish support chat. The app opens this when a log-in is flagged; the token
-// ties the conversation to the flagged attempt so Big Fish can cite the location.
-// LLM calls cost money and this is public, so cap the rate.
+// ties the conversation to the flagged attempt. If Big Fish concludes the person
+// is being extorted/coerced, it escalates: the session is blocked and the app
+// connects them with support. LLM calls cost money and this is public, so cap
+// the rate.
 const CHAT_LIMIT = { perWindow: 60, windowMs: 60 * 1000 };
 let chatTimes: number[] = [];
 
@@ -299,15 +186,19 @@ router.post("/bigfish/:token", async (req, res) => {
     return;
   }
 
-  // Location context from the flagged attempt, if the token is still valid.
-  const found = findAttempt(req.params.token);
-  const ctx = found.ok
-    ? { location: found.attempt.location, ip: found.attempt.ip }
+  const attempt = peekAttempt(req.params.token);
+  const ctx = attempt
+    ? { location: attempt.location, ip: attempt.ip }
     : { location: "an unfamiliar location", ip: "unknown" };
 
   try {
-    const { reply, live } = await bigFishReply(ctx, messages);
-    res.json({ reply, live });
+    const { reply, live, escalate } = await bigFishReply(ctx, messages);
+    if (escalate && attempt) {
+      attempt.status = "blocked";
+      attempt.method = undefined;
+      console.log("[bigfish] extortion signs detected: login blocked, connecting to support");
+    }
+    res.json({ reply, live, escalate });
   } catch (err) {
     console.error("[bigfish] failed:", err);
     res.status(502).json({ error: "Big Fish couldn't respond. Please try again." });

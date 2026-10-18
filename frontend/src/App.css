@@ -765,3 +765,7 @@ button:disabled {
   text-align: center;
   padding: 20px 0;
 }
+
+.blocked-title {
+  color: var(--bad);
+}

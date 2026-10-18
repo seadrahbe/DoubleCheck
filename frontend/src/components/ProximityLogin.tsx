@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api'
-import { APP_NAME } from '../brand'
+import { APP_NAME, SUPPORT_NAME, SUPPORT_PHONE } from '../brand'
 
 // Demo credentials that count as "correct" for this prototype.
 const DEMO_EMAIL = 'demo@northwind.example'
@@ -10,6 +10,7 @@ type State =
   | { step: 'creds'; error?: string }
   | { step: 'waiting'; token: string }
   | { step: 'enter-code'; token: string; error?: string }
+  | { step: 'blocked' }
   | { step: 'error'; message: string }
 
 export interface SignedInInfo {
@@ -47,6 +48,8 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
           onSignedIn({ email, method: s.method === 'gps' || s.method === 'code' ? s.method : 'bluetooth', at: new Date() })
         } else if (s.status === 'code') {
           setState({ step: 'enter-code', token })
+        } else if (s.status === 'blocked') {
+          setState({ step: 'blocked' })
         } else {
           timer = setTimeout(poll, 1500)
         }
@@ -122,6 +125,22 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
         </button>
         {state.error && <p className="error small-top">{state.error}</p>}
       </form>
+    )
+  }
+
+  if (state.step === 'blocked') {
+    return (
+      <div className="login">
+        <h2 className="section-title blocked-title">This sign-in is blocked</h2>
+        <p className="muted">
+          For your protection, we've paused this login and connected you with <strong>{SUPPORT_NAME}</strong>. A
+          specialist will reach out, and you can call them any time at <strong>{SUPPORT_PHONE}</strong>.
+        </p>
+        <p className="muted small-top">
+          You're not in trouble, and this isn't your fault. If someone is threatening you, please contact local
+          emergency services.
+        </p>
+      </div>
     )
   }
 

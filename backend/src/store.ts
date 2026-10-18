@@ -7,7 +7,9 @@ export type Channel = "sms" | "email" | "app";
 //   pending  – waiting for the app to verify
 //   approved – the app confirmed presence (Bluetooth or GPS), or a typed code matched
 //   code     – the app couldn't verify by Bluetooth/GPS, so it issued a code to type
-export type SessionStatus = "pending" | "approved" | "code";
+//   blocked  – Big Fish detected extortion/coercion; the login is blocked and the
+//              person is being connected to support
+export type SessionStatus = "pending" | "approved" | "code" | "blocked";
 export type VerifyMethod = "bluetooth" | "gps" | "code";
 
 export interface LoginAttempt {

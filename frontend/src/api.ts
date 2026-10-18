@@ -1,24 +1,7 @@
-export interface SurveyQuestion {
-  id: string
-  text: string
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
 }
-
-export interface SurveyInfo {
-  location: string
-  ip: string
-  attemptedAt: string
-  progress: number
-  questions: SurveyQuestion[]
-}
-
-export type Channel = 'sms' | 'email'
-
-export type SurveyResult =
-  | { result: 'approved'; code: string }
-  | { result: 'not-me' } // user isn't the one logging in
-  | { result: 'fraud' } // user looks coached by a scammer; account locked
-
-export type AnswerResponse = SurveyResult | { result: 'next' }
 
 // Carries the response body so callers can still use what came back with an error.
 export class ApiError extends Error {
@@ -44,34 +27,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  triggerLogin: (channel: Channel) =>
-    request<{ channel: Channel; sent: boolean; link: string; message: string }>('/login-attempts', {
-      method: 'POST',
-      body: JSON.stringify({ channel }),
-    }),
-  verifyProximity: (proof: string) =>
-    request<{ result: 'approved' } | { result: 'mismatch'; reason?: 'wrong-code' | 'code-used' }>('/proximity/verify', {
-      method: 'POST',
-      body: JSON.stringify({ proof }),
-    }),
-  getSurvey: (token: string) => request<SurveyInfo>(`/survey/${encodeURIComponent(token)}`),
-  submitAnswer: (token: string, questionId: string, answer: boolean) =>
-    request<AnswerResponse>(`/survey/${encodeURIComponent(token)}/answers`, {
-      method: 'POST',
-      body: JSON.stringify({ questionId, answer }),
-    }),
   // Starts a flagged-login session for the app flow (real app or on-screen simulator).
   flaggedLogin: () => request<{ token: string; location: string; ip: string }>('/flagged-login', { method: 'POST' }),
-  // Big Fish support chat.
+  // Big Fish support chat. `escalate` means it detected extortion/coercion.
   bigFish: (token: string, messages: ChatTurn[]) =>
-    request<{ reply: string; live: boolean }>(`/bigfish/${encodeURIComponent(token)}`, {
+    request<{ reply: string; live: boolean; escalate: boolean }>(`/bigfish/${encodeURIComponent(token)}`, {
       method: 'POST',
       body: JSON.stringify({ messages }),
     }),
   // --- App-driven login handshake ---
   // Web polls the session while the user verifies in the app.
   sessionStatus: (token: string) =>
-    request<{ status: 'pending' | 'approved' | 'code'; method: 'bluetooth' | 'gps' | 'code' | null }>(
+    request<{ status: 'pending' | 'approved' | 'code' | 'blocked'; method: 'bluetooth' | 'gps' | 'code' | null }>(
       `/session/${encodeURIComponent(token)}`,
     ),
   // App marks the session verified after a Bluetooth or GPS proximity check.
@@ -89,9 +56,4 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ code }),
     }),
-}
-
-export interface ChatTurn {
-  role: 'user' | 'assistant'
-  content: string
 }

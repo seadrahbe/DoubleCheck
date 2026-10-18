@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, type ChatTurn } from '../api'
-import { BANK_NAME } from '../brand'
+import { BANK_NAME, SUPPORT_NAME, SUPPORT_PHONE } from '../brand'
 
 // On-screen stand-in for the native DoubleCheck app. It verifies the login the
 // web card (left) started, sharing one session token: flagged login → check for
 // an active call → Big Fish chat → confirm → verify (Bluetooth/GPS) → or, only if
 // both fail, a one-time code the user types on the computer.
-type Step = 'idle' | 'home' | 'callcheck' | 'chat' | 'confirm' | 'verifying' | 'verified' | 'code' | 'error'
+type Step = 'idle' | 'home' | 'callcheck' | 'chat' | 'confirm' | 'verifying' | 'verified' | 'code' | 'blocked' | 'error'
 
 const CHIPS = ['I need support', 'How can I tell if a call is real?', 'Warning signs of romantic extortion']
 
@@ -91,11 +91,19 @@ export default function InteractivePhone({ session }: { session: Session | null 
           )}
           {step === 'home' && <Home location={location} onOpen={() => setStep('callcheck')} />}
           {step === 'callcheck' && <CallCheck onContinue={() => setStep('chat')} />}
-          {step === 'chat' && <Chat token={token} location={location} onLogIn={() => setStep('confirm')} />}
+          {step === 'chat' && (
+            <Chat
+              token={token}
+              location={location}
+              onLogIn={() => setStep('confirm')}
+              onEscalate={() => setStep('blocked')}
+            />
+          )}
           {step === 'confirm' && <Confirm onBack={() => setStep('chat')} onConfirm={verify} />}
           {step === 'verifying' && <Verifying note={note} />}
           {step === 'verified' && <Verified method={method} />}
           {step === 'code' && <CodeScreen code={code} />}
+          {step === 'blocked' && <Blocked />}
         </div>
       </div>
       <p className="app-caption">Interactive demo — this is the app half of the sign-in on the left.</p>
@@ -137,7 +145,17 @@ function CallCheck({ onContinue }: { onContinue: () => void }) {
   )
 }
 
-function Chat({ token, location, onLogIn }: { token: string; location: string; onLogIn: () => void }) {
+function Chat({
+  token,
+  location,
+  onLogIn,
+  onEscalate,
+}: {
+  token: string
+  location: string
+  onLogIn: () => void
+  onEscalate: () => void
+}) {
   const greeting = `Hi, I'm Big Fish from the ${BANK_NAME} safety team. We flagged a login from ${location}. You're not in trouble — I just want to make sure you're safe. Is anyone helping you with this login right now?`
   const [turns, setTurns] = useState<ChatTurn[]>([{ role: 'assistant', content: greeting }])
   const [input, setInput] = useState('')
@@ -158,6 +176,8 @@ function Chat({ token, location, onLogIn }: { token: string; location: string; o
     try {
       const res = await api.bigFish(token, next)
       setTurns((t) => [...t, { role: 'assistant', content: res.reply }])
+      // Extortion detected: let the reply land, then show the blocked screen.
+      if (res.escalate) setTimeout(onEscalate, 2000)
     } catch {
       setTurns((t) => [...t, { role: 'assistant', content: 'Sorry, I had trouble responding. Please try again.' }])
     } finally {
@@ -250,6 +270,23 @@ function Verified({ method }: { method: 'bluetooth' | 'gps' }) {
       <p className="app-muted">
         Confirmed you're nearby by {method === 'bluetooth' ? 'Bluetooth' : 'your location'}. You're now signed in on
         your computer — no code needed.
+      </p>
+    </div>
+  )
+}
+
+function Blocked() {
+  return (
+    <div className="app-card">
+      <div className="app-icon" aria-hidden="true">🛟</div>
+      <h3>We're here with you</h3>
+      <p className="app-muted">
+        We've paused this login and connected you with <strong>{SUPPORT_NAME}</strong>. A specialist will reach out, and
+        you can call them any time at <strong>{SUPPORT_PHONE}</strong>.
+      </p>
+      <p className="app-muted tiny">
+        You're not in trouble, and this isn't your fault. If someone is threatening you, please contact local
+        emergency services.
       </p>
     </div>
   )
