@@ -1,12 +1,18 @@
 import SwiftUI
 
-// The flagged-login flow, native version of the web simulator:
-// open → check for an active call → Big Fish chat → confirm → verify → code.
+// The flagged-login flow, in step with the web experience:
+// open → check for an active call → Big Fish chat → (proceed) confirm → verify →
+// code; or, if Big Fish concludes extortion / "this wasn't me", it ends the chat
+// and shows steps to secure the account (the web app is where the lock happens).
 enum FlowStep {
-    case loading, callcheck, chat, confirm, verifying, code, error
+    case loading, callcheck, chat, confirm, verifying, code, secure, error
 }
 
-let chatChips = ["I need support", "How can I tell if a call is real?", "Warning signs of romantic extortion"]
+let supportName = "\(bankName) support"
+let supportPhone = "1-800-555-0100"
+
+// Starter replies for the first turn; after that, suggestions come from Big Fish.
+let openingSuggestions = ["It's me, I'm logging in", "Someone asked me to do this", "I'm not sure"]
 
 struct FlowView: View {
     @ObservedObject var key: KeyPeripheral
@@ -16,6 +22,7 @@ struct FlowView: View {
     @State private var token = ""
     @State private var location = "an unfamiliar location"
     @State private var code = ""
+    @State private var secureReason: BigFishAction = .extortion
     @State private var errorText = ""
 
     var body: some View {
@@ -32,13 +39,23 @@ struct FlowView: View {
             case .callcheck:
                 CallCheckView(calls: calls) { step = .chat }
             case .chat:
-                ChatView(token: token, location: location) { step = .confirm }
+                ChatView(
+                    token: token,
+                    location: location,
+                    onProceed: { step = .confirm },
+                    onBlocked: { reason in
+                        secureReason = reason
+                        step = .secure
+                    }
+                )
             case .confirm:
                 ConfirmView(onBack: { step = .chat }, onConfirm: { Task { await confirmAndVerify() } })
             case .verifying:
                 VerifyingView(key: key, onDone: { step = .code })
             case .code:
                 CodeView(code: code) { Task { await start() } }
+            case .secure:
+                SecureAccountView(reason: secureReason) { Task { await start() } }
             }
         }
         .task { await start() }
@@ -95,9 +112,12 @@ struct CallCheckView: View {
 struct ChatView: View {
     let token: String
     let location: String
-    let onLogIn: () -> Void
+    let onProceed: () -> Void
+    let onBlocked: (BigFishAction) -> Void
 
     @State private var turns: [ChatMessage] = []
+    @State private var suggestions: [String] = openingSuggestions
+    @State private var cleared = false
     @State private var input = ""
     @State private var busy = false
 
@@ -129,17 +149,25 @@ struct ChatView: View {
                 }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack {
-                    ForEach(chatChips, id: \.self) { chip in
-                        Button(chip) { send(chip) }
-                            .font(.caption)
-                            .disabled(busy)
-                            .buttonStyle(.bordered)
+            if cleared {
+                Button("Continue to sign in", action: onProceed)
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 6)
+            }
+
+            if !suggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(suggestions, id: \.self) { chip in
+                            Button(chip) { send(chip) }
+                                .font(.caption)
+                                .disabled(busy)
+                                .buttonStyle(.bordered)
+                        }
                     }
                 }
+                .padding(.vertical, 6)
             }
-            .padding(.vertical, 6)
 
             HStack {
                 TextField("Type a message…", text: $input)
@@ -147,15 +175,17 @@ struct ChatView: View {
                 Button("Send") { send(input) }.disabled(busy || input.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
-            Button("I'd like to log in and access my account", action: onLogIn)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.top, 8)
+            if !cleared {
+                Button("I'd like to log in and access my account", action: onProceed)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 8)
+            }
         }
         .padding(16)
         .onAppear {
             if turns.isEmpty {
-                turns = [ChatMessage(role: .assistant, content: "Hi, I'm Big Fish from the \(bankName) safety team. We flagged a login from \(location). You're not in trouble — I just want to make sure you're safe. Is anyone helping you with this login right now?")]
+                turns = [ChatMessage(role: .assistant, content: "Hi, I'm Big Fish from the \(bankName) safety team. A login from \(location) was flagged, so I just want to make sure you're okay. You're not in trouble — is this you choosing to log in?")]
             }
         }
     }
@@ -164,6 +194,7 @@ struct ChatView: View {
         let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty, !busy else { return }
         turns.append(ChatMessage(role: .user, content: content))
+        suggestions = []
         input = ""
         busy = true
         let history = turns
@@ -172,8 +203,20 @@ struct ChatView: View {
             do {
                 let res = try await API.bigFish(token: token, messages: history)
                 turns.append(ChatMessage(role: .assistant, content: res.reply))
+                switch res.action {
+                case .extortion, .notMe:
+                    // Let the message land, then move to the secure-account steps.
+                    try? await Task.sleep(nanoseconds: 2_200_000_000)
+                    onBlocked(res.action)
+                case .proceed:
+                    cleared = true
+                    suggestions = res.suggestions
+                case .continue:
+                    suggestions = res.suggestions
+                }
             } catch {
                 turns.append(ChatMessage(role: .assistant, content: "Sorry, I had trouble responding. Please try again."))
+                suggestions = openingSuggestions
             }
         }
     }
@@ -255,5 +298,46 @@ struct CodeView: View {
             Button("Done", action: onDone)
         }
         .padding(24)
+    }
+}
+
+// Shown when Big Fish blocks the login (extortion or "this wasn't me"). The lock
+// itself lives on the web; here we gently guide the person to secure the account.
+struct SecureAccountView: View {
+    let reason: BigFishAction
+    let onDone: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Image(systemName: "lifepreserver.fill")
+                    .font(.system(size: 44)).foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity)
+                Text("Let's keep your account safe").font(.title3.bold()).frame(maxWidth: .infinity)
+                Text(reason == .extortion
+                    ? "You're not in trouble, and none of this is your fault. We've paused the sign-in on your computer. Here are a few steps to protect yourself:"
+                    : "Thanks for letting us know this wasn't you. We've paused the sign-in on your computer. Here's how to secure your account:")
+                    .foregroundStyle(.secondary)
+
+                stepRow(1, "Change your password now, and anywhere you've reused it.")
+                stepRow(2, "Review recent activity and sign out of devices you don't recognize.")
+                stepRow(3, "Never share a code or move money because someone told you to.")
+                stepRow(4, "Call \(supportName) at \(supportPhone) — they'll help you finish securing things.")
+                if reason == .extortion {
+                    stepRow(5, "If someone is threatening you, contact local law enforcement.")
+                }
+
+                Button("Done", action: onDone).frame(maxWidth: .infinity).padding(.top, 4)
+            }
+            .padding(20)
+        }
+    }
+
+    private func stepRow(_ n: Int, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(n)").font(.caption.bold()).foregroundStyle(.white)
+                .frame(width: 22, height: 22).background(Color.accentColor).clipShape(Circle())
+            Text(text).font(.callout)
+        }
     }
 }

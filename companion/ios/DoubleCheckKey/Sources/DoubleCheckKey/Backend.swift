@@ -26,8 +26,14 @@ struct FlaggedLogin: Decodable {
     let ip: String
 }
 
+enum BigFishAction: String, Decodable {
+    case `continue`, proceed, extortion, notMe = "not_me"
+}
+
 struct BigFishReply: Decodable {
     let reply: String
+    let action: BigFishAction
+    let suggestions: [String]
     let live: Bool
 }
 
