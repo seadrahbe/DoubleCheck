@@ -1,15 +1,18 @@
 :root {
-  --text: #4b5563;
-  --text-h: #0f172a;
-  --bg: #f4f6fa;
-  --surface: #fff;
-  --border: #e2e6ee;
-  --accent: #2554d8;
+  /* Oceanic: calm blues and white, soft sea-foam and coral accents. */
+  --text: #4a6675;
+  --text-h: #0c3a4c;
+  --bg: #eaf4f9;
+  --surface: #ffffff;
+  --border: #d3e5ee;
+  --accent: #1783a6;
   --accent-text: #fff;
-  --good: #15803d;
-  --bad: #b91c1c;
-  --code-bg: #eef1f6;
-  --shadow: rgba(15, 23, 42, 0.08) 0 8px 24px -6px;
+  --accent-bg: #e3f1f7;
+  --accent-border: #bfe0ec;
+  --good: #1f9d8f;
+  --bad: #c85c52;
+  --code-bg: #e6f1f6;
+  --shadow: rgba(12, 58, 76, 0.1) 0 8px 24px -6px;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -23,17 +26,20 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #a3acbb;
-    --text-h: #f1f5f9;
-    --bg: #0f1218;
-    --surface: #171b23;
-    --border: #2a303c;
-    --accent: #6b8cff;
-    --accent-text: #0b1020;
-    --good: #4ade80;
-    --bad: #f87171;
-    --code-bg: #20252f;
-    --shadow: rgba(0, 0, 0, 0.4) 0 8px 24px -6px;
+    /* Deep ocean at night. */
+    --text: #a7c3ce;
+    --text-h: #eaf5f9;
+    --bg: #07212c;
+    --surface: #0e2e3a;
+    --border: #1d4553;
+    --accent: #4db6d4;
+    --accent-text: #052029;
+    --accent-bg: rgba(77, 182, 212, 0.14);
+    --accent-border: rgba(77, 182, 212, 0.4);
+    --good: #4fd1b5;
+    --bad: #ef8c84;
+    --code-bg: #10303d;
+    --shadow: rgba(0, 0, 0, 0.45) 0 8px 24px -6px;
   }
 }
 

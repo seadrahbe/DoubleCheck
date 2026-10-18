@@ -232,7 +232,7 @@ button:disabled {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: #2554d8;
+  background: #1783a6;
   color: #fff;
   font-size: 14px;
   font-weight: 700;
@@ -285,7 +285,7 @@ button:disabled {
 }
 
 .phone-bubble a {
-  color: #0a66d8;
+  color: #1783a6;
 }
 
 .section-title {
@@ -418,7 +418,7 @@ button:disabled {
 
 /* Interactive app simulator inside the phone frame */
 .app-screen {
-  color: #0b1324;
+  color: #0c3a4c;
 }
 
 .app-body {
@@ -437,7 +437,7 @@ button:disabled {
 }
 
 .app-muted {
-  color: #5b6472;
+  color: #4a6675;
   font-size: 0.9rem;
 }
 
@@ -465,7 +465,7 @@ button:disabled {
   justify-content: flex-start;
   gap: 18px;
   padding-top: 24px;
-  background: linear-gradient(160deg, #1b2a4a, #0b1324);
+  background: linear-gradient(165deg, #0b5377, #072b3c);
   margin: -14px;
   padding: 40px 16px;
 }
@@ -504,7 +504,7 @@ button:disabled {
 
 .app-notif-body {
   font-size: 0.9rem;
-  color: #0b1324;
+  color: #0c3a4c;
 }
 
 .app-badge {
@@ -513,7 +513,7 @@ button:disabled {
   width: 20px;
   height: 20px;
   border-radius: 5px;
-  background: #2554d8;
+  background: #1783a6;
   color: #fff;
   font-size: 0.6rem;
   font-weight: 700;
@@ -525,7 +525,7 @@ button:disabled {
   height: 34px;
   border-radius: 50%;
   font-size: 1.1rem;
-  background: #0b7285;
+  background: #0e6d8a;
 }
 
 /* Generic card screens (call check, confirm, verifying, code) */
@@ -542,7 +542,7 @@ button:disabled {
 .app-card h3 {
   margin: 0;
   font-size: 1.15rem;
-  color: #0b1324;
+  color: #0c3a4c;
 }
 
 .app-icon {
@@ -556,7 +556,7 @@ button:disabled {
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  background: #15803d;
+  background: #1f9d8f;
   color: #fff;
   font-size: 1.8rem;
 }
@@ -567,7 +567,7 @@ button:disabled {
   padding: 12px;
   border: none;
   border-radius: 12px;
-  background: #2554d8;
+  background: #1783a6;
   color: #fff;
   font: inherit;
   font-weight: 600;
@@ -576,8 +576,8 @@ button:disabled {
 
 .app-btn.ghost {
   background: transparent;
-  color: #2554d8;
-  border: 1px solid #c9d4ee;
+  color: #1783a6;
+  border: 1px solid #bfe0ec;
 }
 
 .app-btn:disabled {
@@ -590,7 +590,7 @@ button:disabled {
   padding: 8px;
   border: none;
   background: none;
-  color: #5b6472;
+  color: #4a6675;
   font-size: 0.78rem;
   text-decoration: underline;
   cursor: pointer;
@@ -642,13 +642,13 @@ button:disabled {
 .bubble.them {
   align-self: flex-start;
   background: #eef1f6;
-  color: #0b1324;
+  color: #0c3a4c;
   border-bottom-left-radius: 4px;
 }
 
 .bubble.me {
   align-self: flex-end;
-  background: #2554d8;
+  background: #1783a6;
   color: #fff;
   border-bottom-right-radius: 4px;
 }
@@ -666,10 +666,10 @@ button:disabled {
 
 .chip {
   padding: 7px 10px;
-  border: 1px solid #c9d4ee;
+  border: 1px solid #bfe0ec;
   border-radius: 14px;
   background: #fff;
-  color: #2554d8;
+  color: #1783a6;
   font-size: 0.75rem;
   cursor: pointer;
 }
@@ -688,7 +688,7 @@ button:disabled {
   flex: 1;
   min-width: 0;
   padding: 9px 12px;
-  border: 1px solid #c9d4ee;
+  border: 1px solid #bfe0ec;
   border-radius: 18px;
   font: inherit;
   font-size: 0.85rem;
@@ -698,7 +698,7 @@ button:disabled {
   padding: 9px 14px;
   border: none;
   border-radius: 18px;
-  background: #2554d8;
+  background: #1783a6;
   color: #fff;
   font: inherit;
   font-weight: 600;
@@ -716,7 +716,7 @@ button:disabled {
   height: 40px;
   border-radius: 50%;
   border: 4px solid #e6e9f0;
-  border-top-color: #2554d8;
+  border-top-color: #1783a6;
   animation: app-spin 0.8s linear infinite;
 }
 
@@ -743,11 +743,11 @@ button:disabled {
 .app-steps p {
   margin: 0;
   font-size: 0.85rem;
-  color: #5b6472;
+  color: #4a6675;
 }
 
 .app-steps p.ok {
-  color: #15803d;
+  color: #1f9d8f;
   font-weight: 600;
 }
 
@@ -756,7 +756,7 @@ button:disabled {
   font-size: 2.2rem;
   font-weight: 700;
   letter-spacing: 0.1em;
-  color: #15803d;
+  color: #1f9d8f;
   margin: 4px 0;
 }
 
@@ -782,7 +782,7 @@ button:disabled {
 .app-steplist {
   margin: 4px 0 0;
   padding-left: 20px;
-  color: #5b6472;
+  color: #4a6675;
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -792,5 +792,5 @@ button:disabled {
 }
 
 .app-steplist strong {
-  color: #0b1324;
+  color: #0c3a4c;
 }
