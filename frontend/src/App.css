@@ -769,3 +769,28 @@ button:disabled {
 .blocked-title {
   color: var(--bad);
 }
+
+.app-card.secure {
+  text-align: left;
+  align-items: stretch;
+}
+
+.app-card.secure h3 {
+  text-align: center;
+}
+
+.app-steplist {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  color: #5b6472;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.app-steplist li {
+  margin-bottom: 8px;
+}
+
+.app-steplist strong {
+  color: #0b1324;
+}

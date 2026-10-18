@@ -299,26 +299,28 @@ function Verified({ method }: { method: 'bluetooth' | 'gps' }) {
   )
 }
 
+// On the phone we don't show a "locked" wall — the web handles the lock. Here we
+// gently guide the person through securing their account.
 function Blocked({ reason }: { reason: BlockReason }) {
   return (
-    <div className="app-card">
-      <div className="app-icon" aria-hidden="true">{reason === 'extortion' ? '🛟' : '🔒'}</div>
-      <h3>{reason === 'extortion' ? "We're here with you" : 'Account locked for safety'}</h3>
-      {reason === 'extortion' ? (
-        <p className="app-muted">
-          We've paused this login and connected you with <strong>{SUPPORT_NAME}</strong>. A specialist will reach out,
-          and you can call them any time at <strong>{SUPPORT_PHONE}</strong>.
-        </p>
-      ) : (
-        <p className="app-muted">
-          Since this login wasn't started by you, we've locked the account to protect it. <strong>{SUPPORT_NAME}</strong>{' '}
-          will help you get back in safely — call <strong>{SUPPORT_PHONE}</strong>.
-        </p>
-      )}
-      <p className="app-muted tiny">
-        You're not in trouble, and this isn't your fault. If someone is threatening you, please contact local
-        emergency services.
+    <div className="app-card secure">
+      <div className="app-icon" aria-hidden="true">🛟</div>
+      <h3>Let's keep your account safe</h3>
+      <p className="app-muted">
+        {reason === 'extortion'
+          ? "You're not in trouble, and none of this is your fault. We've paused the sign-in on your computer. Here are a few steps to protect yourself:"
+          : "Thanks for letting us know this wasn't you. We've paused the sign-in on your computer. Here's how to secure your account:"}
       </p>
+      <ol className="app-steplist">
+        <li>Change your password now, and anywhere you've reused it.</li>
+        <li>Review recent activity and sign out of devices you don't recognize.</li>
+        <li>Never share a code or move money because someone told you to.</li>
+        <li>
+          Call <strong>{SUPPORT_NAME}</strong> at <strong>{SUPPORT_PHONE}</strong> — they'll help you finish securing
+          things.
+        </li>
+        {reason === 'extortion' && <li>If someone is threatening you, contact local law enforcement.</li>}
+      </ol>
     </div>
   )
 }
