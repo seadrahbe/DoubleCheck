@@ -11,7 +11,7 @@ export const config = {
   // IP the simulated suspicious login comes from (looked up to a location).
   simulatedLoginIp: env.SIMULATED_LOGIN_IP || "185.220.101.1",
   // Institution name Big Fish uses, incl. the support team it escalates to.
-  bankName: env.BANK_NAME || "Northwind Bank",
+  bankName: env.BANK_NAME || "Sound Credit Union",
   tokenTtlMs: 10 * 60 * 1000,
   // Secret the user's DoubleCheck Key (Bluetooth companion) serves to prove it's
   // nearby. Same value goes into the companion app / nRF Connect.

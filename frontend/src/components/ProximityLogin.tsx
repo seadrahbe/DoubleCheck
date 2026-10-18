@@ -3,7 +3,7 @@ import { api, type BlockReason } from '../api'
 import { APP_NAME, SUPPORT_NAME, SUPPORT_PHONE } from '../brand'
 
 // Demo credentials that count as "correct" for this prototype.
-const DEMO_EMAIL = 'demo@northwind.example'
+const DEMO_EMAIL = 'demo@soundcreditunion.example'
 const DEMO_PASSWORD = 'hunter22'
 
 type State =
@@ -148,8 +148,7 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
           )}
         </p>
         <p className="muted small-top">
-          You're not in trouble, and this isn't your fault. If someone is threatening you, please contact local
-          emergency services.
+          If anyone is pressuring or threatening you, please contact local emergency services.
         </p>
       </div>
     )

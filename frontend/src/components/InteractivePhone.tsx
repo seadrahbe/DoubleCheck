@@ -162,7 +162,7 @@ function Chat({
   onProceed: () => void
   onBlocked: (reason: BlockReason) => void
 }) {
-  const greeting = `Hi, I'm Big Fish from the ${BANK_NAME} safety team. A login from ${location} was flagged, so I just want to make sure you're okay. You're not in trouble — is this you choosing to log in?`
+  const greeting = `Hi, I'm Big Fish from the ${BANK_NAME} safety team. A login from ${location} was flagged, so I'm checking in before it goes through. Is this you logging in right now?`
   const [turns, setTurns] = useState<ChatTurn[]>([{ role: 'assistant', content: greeting }])
   const [suggestions, setSuggestions] = useState<string[]>(OPENING_SUGGESTIONS)
   const [cleared, setCleared] = useState(false) // Big Fish said it's fine to proceed
@@ -308,7 +308,7 @@ function Blocked({ reason }: { reason: BlockReason }) {
       <h3>Let's keep your account safe</h3>
       <p className="app-muted">
         {reason === 'extortion'
-          ? "You're not in trouble, and none of this is your fault. We've paused the sign-in on your computer. Here are a few steps to protect yourself:"
+          ? "We've paused the sign-in on your computer. Here are a few steps to protect your account:"
           : "Thanks for letting us know this wasn't you. We've paused the sign-in on your computer. Here's how to secure your account:"}
       </p>
       <ol className="app-steplist">

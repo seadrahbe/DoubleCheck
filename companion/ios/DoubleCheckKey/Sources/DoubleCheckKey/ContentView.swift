@@ -4,7 +4,7 @@ import UIKit
 #endif
 
 // Fictional bank shown in the demo app. Not a real institution.
-let bankName = "Northwind Bank"
+let bankName = "Sound Credit Union"
 
 struct ContentView: View {
     // Keeps broadcasting the rotating proximity code the whole time the app is open.

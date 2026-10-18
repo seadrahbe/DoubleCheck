@@ -185,7 +185,7 @@ struct ChatView: View {
         .padding(16)
         .onAppear {
             if turns.isEmpty {
-                turns = [ChatMessage(role: .assistant, content: "Hi, I'm Big Fish from the \(bankName) safety team. A login from \(location) was flagged, so I just want to make sure you're okay. You're not in trouble — is this you choosing to log in?")]
+                turns = [ChatMessage(role: .assistant, content: "Hi, I'm Big Fish from the \(bankName) safety team. A login from \(location) was flagged, so I'm checking in before it goes through. Is this you logging in right now?")]
             }
         }
     }
@@ -315,7 +315,7 @@ struct SecureAccountView: View {
                     .frame(maxWidth: .infinity)
                 Text("Let's keep your account safe").font(.title3.bold()).frame(maxWidth: .infinity)
                 Text(reason == .extortion
-                    ? "You're not in trouble, and none of this is your fault. We've paused the sign-in on your computer. Here are a few steps to protect yourself:"
+                    ? "We've paused the sign-in on your computer. Here are a few steps to protect your account:"
                     : "Thanks for letting us know this wasn't you. We've paused the sign-in on your computer. Here's how to secure your account:")
                     .foregroundStyle(.secondary)
 
