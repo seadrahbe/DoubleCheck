@@ -24,6 +24,7 @@ export interface LoginAttempt {
   status: SessionStatus;
   method?: VerifyMethod;
   code?: string; // set only when the app falls back to a typed code
+  blockReason?: "extortion" | "not_me"; // why the login was blocked
 }
 
 // In-memory only: everything is lost when the server restarts. Fine for a prototype.

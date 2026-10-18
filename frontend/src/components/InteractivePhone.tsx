@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, type ChatTurn } from '../api'
+import { api, type BlockReason, type ChatTurn } from '../api'
 import { BANK_NAME, SUPPORT_NAME, SUPPORT_PHONE } from '../brand'
 
 // On-screen stand-in for the native DoubleCheck app. It verifies the login the
 // web card (left) started, sharing one session token: flagged login → check for
 // an active call → Big Fish chat → confirm → verify (Bluetooth/GPS) → or, only if
-// both fail, a one-time code the user types on the computer.
+// both fail, a one-time code the user types on the computer. Big Fish can also
+// end the chat by blocking the login (extortion, or "this wasn't me").
 type Step = 'idle' | 'home' | 'callcheck' | 'chat' | 'confirm' | 'verifying' | 'verified' | 'code' | 'blocked' | 'error'
-
-const CHIPS = ['I need support', 'How can I tell if a call is real?', 'Warning signs of romantic extortion']
 
 interface Session {
   token: string
@@ -21,6 +20,7 @@ export default function InteractivePhone({ session }: { session: Session | null 
   const [note, setNote] = useState('')
   const [method, setMethod] = useState<'bluetooth' | 'gps'>('bluetooth')
   const [code, setCode] = useState('')
+  const [blockReason, setBlockReason] = useState<BlockReason>('extortion')
   const [error, setError] = useState('')
 
   const token = session?.token ?? ''
@@ -95,15 +95,18 @@ export default function InteractivePhone({ session }: { session: Session | null 
             <Chat
               token={token}
               location={location}
-              onLogIn={() => setStep('confirm')}
-              onEscalate={() => setStep('blocked')}
+              onProceed={() => setStep('confirm')}
+              onBlocked={(reason) => {
+                setBlockReason(reason)
+                setStep('blocked')
+              }}
             />
           )}
           {step === 'confirm' && <Confirm onBack={() => setStep('chat')} onConfirm={verify} />}
           {step === 'verifying' && <Verifying note={note} />}
           {step === 'verified' && <Verified method={method} />}
           {step === 'code' && <CodeScreen code={code} />}
-          {step === 'blocked' && <Blocked />}
+          {step === 'blocked' && <Blocked reason={blockReason} />}
         </div>
       </div>
       <p className="app-caption">Interactive demo — this is the app half of the sign-in on the left.</p>
@@ -145,19 +148,24 @@ function CallCheck({ onContinue }: { onContinue: () => void }) {
   )
 }
 
+// Starter replies for the first turn; after that, suggestions come from Big Fish.
+const OPENING_SUGGESTIONS = ["It's me, I'm logging in", 'Someone asked me to do this', "I'm not sure"]
+
 function Chat({
   token,
   location,
-  onLogIn,
-  onEscalate,
+  onProceed,
+  onBlocked,
 }: {
   token: string
   location: string
-  onLogIn: () => void
-  onEscalate: () => void
+  onProceed: () => void
+  onBlocked: (reason: BlockReason) => void
 }) {
-  const greeting = `Hi, I'm Big Fish from the ${BANK_NAME} safety team. We flagged a login from ${location}. You're not in trouble — I just want to make sure you're safe. Is anyone helping you with this login right now?`
+  const greeting = `Hi, I'm Big Fish from the ${BANK_NAME} safety team. A login from ${location} was flagged, so I just want to make sure you're okay. You're not in trouble — is this you choosing to log in?`
   const [turns, setTurns] = useState<ChatTurn[]>([{ role: 'assistant', content: greeting }])
+  const [suggestions, setSuggestions] = useState<string[]>(OPENING_SUGGESTIONS)
+  const [cleared, setCleared] = useState(false) // Big Fish said it's fine to proceed
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const threadRef = useRef<HTMLDivElement>(null)
@@ -171,15 +179,22 @@ function Chat({
     if (!content || busy) return
     const next = [...turns, { role: 'user' as const, content }]
     setTurns(next)
+    setSuggestions([])
     setInput('')
     setBusy(true)
     try {
       const res = await api.bigFish(token, next)
       setTurns((t) => [...t, { role: 'assistant', content: res.reply }])
-      // Extortion detected: let the reply land, then show the blocked screen.
-      if (res.escalate) setTimeout(onEscalate, 2000)
+      if (res.action === 'extortion' || res.action === 'not_me') {
+        // Let the message land, then end the chat on the blocked screen.
+        setTimeout(() => onBlocked(res.action as BlockReason), 2200)
+      } else {
+        setSuggestions(res.suggestions)
+        if (res.action === 'proceed') setCleared(true)
+      }
     } catch {
       setTurns((t) => [...t, { role: 'assistant', content: 'Sorry, I had trouble responding. Please try again.' }])
+      setSuggestions(OPENING_SUGGESTIONS)
     } finally {
       setBusy(false)
     }
@@ -202,13 +217,20 @@ function Chat({
         ))}
         {busy && <p className="bubble them typing">…</p>}
       </div>
-      <div className="app-chips">
-        {CHIPS.map((c) => (
-          <button key={c} className="chip" disabled={busy} onClick={() => send(c)}>
-            {c}
-          </button>
-        ))}
-      </div>
+      {cleared && (
+        <button className="app-btn" onClick={onProceed}>
+          Continue to sign in
+        </button>
+      )}
+      {suggestions.length > 0 && (
+        <div className="app-chips">
+          {suggestions.map((s) => (
+            <button key={s} className="chip" disabled={busy} onClick={() => send(s)}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
       <form
         className="app-input"
         onSubmit={(e) => {
@@ -226,9 +248,11 @@ function Chat({
           Send
         </button>
       </form>
-      <button className="app-link" onClick={onLogIn}>
-        I'd like to log in and access my account
-      </button>
+      {!cleared && (
+        <button className="app-link" onClick={onProceed}>
+          I'd like to log in and access my account
+        </button>
+      )}
     </div>
   )
 }
@@ -275,15 +299,22 @@ function Verified({ method }: { method: 'bluetooth' | 'gps' }) {
   )
 }
 
-function Blocked() {
+function Blocked({ reason }: { reason: BlockReason }) {
   return (
     <div className="app-card">
-      <div className="app-icon" aria-hidden="true">🛟</div>
-      <h3>We're here with you</h3>
-      <p className="app-muted">
-        We've paused this login and connected you with <strong>{SUPPORT_NAME}</strong>. A specialist will reach out, and
-        you can call them any time at <strong>{SUPPORT_PHONE}</strong>.
-      </p>
+      <div className="app-icon" aria-hidden="true">{reason === 'extortion' ? '🛟' : '🔒'}</div>
+      <h3>{reason === 'extortion' ? "We're here with you" : 'Account locked for safety'}</h3>
+      {reason === 'extortion' ? (
+        <p className="app-muted">
+          We've paused this login and connected you with <strong>{SUPPORT_NAME}</strong>. A specialist will reach out,
+          and you can call them any time at <strong>{SUPPORT_PHONE}</strong>.
+        </p>
+      ) : (
+        <p className="app-muted">
+          Since this login wasn't started by you, we've locked the account to protect it. <strong>{SUPPORT_NAME}</strong>{' '}
+          will help you get back in safely — call <strong>{SUPPORT_PHONE}</strong>.
+        </p>
+      )}
       <p className="app-muted tiny">
         You're not in trouble, and this isn't your fault. If someone is threatening you, please contact local
         emergency services.

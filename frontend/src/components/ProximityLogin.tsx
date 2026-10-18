@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api } from '../api'
+import { api, type BlockReason } from '../api'
 import { APP_NAME, SUPPORT_NAME, SUPPORT_PHONE } from '../brand'
 
 // Demo credentials that count as "correct" for this prototype.
@@ -10,7 +10,7 @@ type State =
   | { step: 'creds'; error?: string }
   | { step: 'waiting'; token: string }
   | { step: 'enter-code'; token: string; error?: string }
-  | { step: 'blocked' }
+  | { step: 'blocked'; reason: BlockReason }
   | { step: 'error'; message: string }
 
 export interface SignedInInfo {
@@ -49,7 +49,7 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
         } else if (s.status === 'code') {
           setState({ step: 'enter-code', token })
         } else if (s.status === 'blocked') {
-          setState({ step: 'blocked' })
+          setState({ step: 'blocked', reason: s.reason ?? 'extortion' })
         } else {
           timer = setTimeout(poll, 1500)
         }
@@ -131,10 +131,21 @@ export default function ProximityLogin({ onSession, onSignedIn }: Props) {
   if (state.step === 'blocked') {
     return (
       <div className="login">
-        <h2 className="section-title blocked-title">This sign-in is blocked</h2>
+        <h2 className="section-title blocked-title">
+          {state.reason === 'extortion' ? 'This sign-in is blocked' : 'Account locked for safety'}
+        </h2>
         <p className="muted">
-          For your protection, we've paused this login and connected you with <strong>{SUPPORT_NAME}</strong>. A
-          specialist will reach out, and you can call them any time at <strong>{SUPPORT_PHONE}</strong>.
+          {state.reason === 'extortion' ? (
+            <>
+              For your protection, we've paused this login and connected you with <strong>{SUPPORT_NAME}</strong>. A
+              specialist will reach out, and you can call them any time at <strong>{SUPPORT_PHONE}</strong>.
+            </>
+          ) : (
+            <>
+              Since this login wasn't started by you, we've locked the account to protect it. <strong>{SUPPORT_NAME}</strong>{' '}
+              will help you get back in safely — call <strong>{SUPPORT_PHONE}</strong>.
+            </>
+          )}
         </p>
         <p className="muted small-top">
           You're not in trouble, and this isn't your fault. If someone is threatening you, please contact local

@@ -35,7 +35,7 @@ router.get("/session/:token", (req, res) => {
     res.status(404).json({ error: "This login session has expired." });
     return;
   }
-  res.json({ status: attempt.status, method: attempt.method ?? null });
+  res.json({ status: attempt.status, method: attempt.method ?? null, reason: attempt.blockReason ?? null });
 });
 
 // App calls this on a successful Bluetooth or GPS proximity check.
@@ -192,13 +192,18 @@ router.post("/bigfish/:token", async (req, res) => {
     : { location: "an unfamiliar location", ip: "unknown" };
 
   try {
-    const { reply, live, escalate } = await bigFishReply(ctx, messages);
-    if (escalate && attempt) {
+    const { message, action, suggestions, live } = await bigFishReply(ctx, messages);
+    if (attempt && (action === "extortion" || action === "not_me")) {
       attempt.status = "blocked";
+      attempt.blockReason = action;
       attempt.method = undefined;
-      console.log("[bigfish] extortion signs detected: login blocked, connecting to support");
+      console.log(
+        action === "extortion"
+          ? "[bigfish] extortion signs detected: login blocked, connecting to support"
+          : "[bigfish] customer says this login wasn't them: account locked",
+      );
     }
-    res.json({ reply, live, escalate });
+    res.json({ reply: message, action, suggestions, live });
   } catch (err) {
     console.error("[bigfish] failed:", err);
     res.status(502).json({ error: "Big Fish couldn't respond. Please try again." });

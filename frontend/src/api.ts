@@ -3,6 +3,9 @@ export interface ChatTurn {
   content: string
 }
 
+export type BigFishAction = 'continue' | 'proceed' | 'extortion' | 'not_me'
+export type BlockReason = 'extortion' | 'not_me'
+
 // Carries the response body so callers can still use what came back with an error.
 export class ApiError extends Error {
   data: Record<string, unknown>
@@ -29,18 +32,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   // Starts a flagged-login session for the app flow (real app or on-screen simulator).
   flaggedLogin: () => request<{ token: string; location: string; ip: string }>('/flagged-login', { method: 'POST' }),
-  // Big Fish support chat. `escalate` means it detected extortion/coercion.
+  // Big Fish support chat. `action` drives the flow (continue / proceed / block),
+  // `suggestions` are dynamic one-tap replies for the user's next turn.
   bigFish: (token: string, messages: ChatTurn[]) =>
-    request<{ reply: string; live: boolean; escalate: boolean }>(`/bigfish/${encodeURIComponent(token)}`, {
-      method: 'POST',
-      body: JSON.stringify({ messages }),
-    }),
+    request<{ reply: string; action: BigFishAction; suggestions: string[]; live: boolean }>(
+      `/bigfish/${encodeURIComponent(token)}`,
+      { method: 'POST', body: JSON.stringify({ messages }) },
+    ),
   // --- App-driven login handshake ---
   // Web polls the session while the user verifies in the app.
   sessionStatus: (token: string) =>
-    request<{ status: 'pending' | 'approved' | 'code' | 'blocked'; method: 'bluetooth' | 'gps' | 'code' | null }>(
-      `/session/${encodeURIComponent(token)}`,
-    ),
+    request<{
+      status: 'pending' | 'approved' | 'code' | 'blocked'
+      method: 'bluetooth' | 'gps' | 'code' | null
+      reason: BlockReason | null
+    }>(`/session/${encodeURIComponent(token)}`),
   // App marks the session verified after a Bluetooth or GPS proximity check.
   verifySession: (token: string, method: 'bluetooth' | 'gps') =>
     request<{ ok: true }>(`/session/${encodeURIComponent(token)}/verify`, {

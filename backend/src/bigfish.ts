@@ -1,11 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.js";
 
-// "Big Fish" is a calm, supportive security guide shown when a log-in is flagged.
-// Its job is to gently check whether the person is being coached or pressured by
-// a scammer, give plain-language safety help, and never hand over codes or rush a
-// log-in. The actual verification (Bluetooth/GPS/code) is handled elsewhere; Big
-// Fish only talks.
+// "Big Fish" is a warm, calm security guide shown when a log-in is flagged. In a
+// few gentle exchanges it tries to tell whether the sign-in is the customer's own
+// free choice. It never interrogates: short, kind, respecting the person's
+// agency. It reaches one of three outcomes and then stops:
+//   - proceed:   looks like the customer's own willing login → share observations, let them continue
+//   - extortion: the customer is being extorted/coerced → connect to support, block the login
+//   - not_me:    the login wasn't started by the customer → lock the account
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -17,92 +19,135 @@ export interface LoginContext {
   ip: string;
 }
 
+export type BigFishAction = "continue" | "proceed" | "extortion" | "not_me";
+
+export interface BigFishResult {
+  message: string;
+  action: BigFishAction;
+  suggestions: string[]; // dynamic one-tap replies for the user's next turn
+  live: boolean; // true = from Claude, false = scripted fallback
+}
+
 const client = config.anthropicApiKey ? new Anthropic({ apiKey: config.anthropicApiKey }) : null;
 
-const SYSTEM = `You are "Big Fish", a warm, calm security guide for a bank's account-protection team. A log-in to the customer's account was just flagged as suspicious. You are talking with the customer to make sure they are safe before they continue.
+const SYSTEM = `You are "Big Fish", a warm, calm safety guide for ${config.bankName}. A log-in to the customer's account was just flagged as unusual, and you're having a short chat to make sure the customer is safe and that this is really them choosing to log in.
 
-Your goals, in order:
-1. Reassure them. They are not in trouble. This is a safety check.
-2. Gently notice signs that someone else may be directing them (a romance or "partner" they haven't met in person, a "support agent" or "government official" on the phone, pressure to act fast, a promised prize/refund/investment, a request to move money or share a code). Explore with open, non-judgmental questions. Never accuse or shame them.
-3. When they ask, give short, concrete safety help (how to tell if a call is really from their bank, warning signs of romance or sextortion scams, what to do next).
-4. Encourage them to slow down and check with someone they trust, and to contact their bank only through the number on their card.
+Your voice:
+- Kind, respectful, and unhurried. The customer is not in trouble and not a suspect.
+- Respect their agency. It is their account and their decision. You help and explain; you never pressure, lecture, or demand.
+- Gentle explanations over questions. When you do ask, ask ONE simple question at a time, and only when you genuinely need it. Never fire several questions in a row or make it feel like an interrogation.
+- Short, plain language (2-3 sentences). Many customers are older or shaken.
 
-Hard rules:
-- Never provide, read out, or hint at a verification/MFA code. You do not have it.
-- Never tell them how to finish logging in. If they decide to proceed, tell them to use the "I'd like to log in and access my account" button; the app verifies them, not you.
-- If they describe being pressured to move money or share a code right now, gently urge them to stop and not act until they've spoken to someone they trust or the police.
-- Keep replies short (2-4 short sentences), plain, and kind. Many customers are older or distressed. No jargon, no lists unless they ask "what are the signs".
-- You are not a therapist or emergency service. If someone may be in danger, suggest contacting local emergency services or a trusted person.
+What you're trying to understand, over about three short exchanges:
+- Is the customer the one choosing to log in, of their own free will?
+- Is anyone directing, pressuring, threatening, or deceiving them (a "partner" they've never met in person, a "support agent"/"official" on the phone, urgency, a promised prize/refund/investment, or a demand to move money or share a code)?
 
-Escalation:
-- If you conclude the person is being extorted, blackmailed, threatened (including sextortion — threats to share intimate images), or coerced by someone into this login or into moving money or sharing codes, then escalate. To escalate, make the very last line of your reply exactly:
-  [[ESCALATE]]
-  Output that token on its own line, nothing after it, and never explain or mention the token itself.
-- In that same reply, gently tell them you're connecting them with the ${config.bankName} support team and pausing this login to keep them safe, reassure them it's not their fault, and, if anyone is threatening them, suggest contacting local law enforcement.
-- Only escalate when there are real signs of extortion or coercion — not for ordinary questions or when the person is simply the one logging in.`;
+Reach a conclusion within roughly three exchanges unless something is clearly wrong — do not keep probing once things seem fine. Err toward respecting the customer: if there are no red flags, let them proceed.
 
-// Scripted replies so the demo works with no API key configured. Matched loosely
-// against the user's latest message / the fixed option chips.
-const ESCALATE_MARKER = "[[ESCALATE]]";
+Never reveal or hint at a verification/MFA code, and never explain how to finish logging in — the app handles that.
 
-// Signs of extortion/coercion in the user's own words, for the scripted fallback
-// (the live model decides for itself and emits the marker).
+Respond with ONLY a JSON object (no markdown, no prose around it) of this exact shape:
+{
+  "message": "what you say to the customer, warm and brief",
+  "action": "continue" | "proceed" | "extortion" | "not_me",
+  "suggestions": ["up to 3 short, first-person replies the customer might tap, written in their voice and specific to what you just said"]
+}
+
+Choosing "action":
+- "continue": you're still gently understanding the situation. Include a gentle question OR a reassurance in "message", and 2-3 fitting "suggestions".
+- "proceed": you're reasonably satisfied this is their own, willing login. In "message", briefly share what you noticed and reassure them, then let them continue. "suggestions" should include a way to continue (e.g. "Yes, take me to sign in") and an out (e.g. "Actually, something feels off").
+- "extortion": there are real signs the customer is being extorted, blackmailed, threatened (including threats to share intimate images), or coerced. In "message", gently explain you're connecting them with the ${config.bankName} support team and pausing this login to keep them safe, that it is not their fault, and to contact local police if they're threatened. This ENDS the chat, so "suggestions" must be [].
+- "not_me": the customer indicates they did not start this login (someone else is trying to get in, or they didn't attempt it). In "message", gently explain you're locking the account to protect it and support will help them regain access. This ENDS the chat, so "suggestions" must be [].
+
+Only choose "extortion" or "not_me" on real signals — not for ordinary questions or nerves.`;
+
+// --- Scripted fallback (no API key) ---------------------------------------
 const EXTORTION_SIGNS =
   /\b(extort|blackmail|sextort|threaten(ing|ed)?|intimate|nude photo|nude pic|leak( my)? photo|share (my )?(photos|pictures|images)|post (my )?(photos|pictures)|or (they|he|she)('?ll| will) (post|share|send)|pay (them|him|her) or|hostage|ransom)\b/i;
+const NOT_ME_SIGNS =
+  /\b(wasn'?t me|was not me|didn'?t (try|start|attempt|log)|not me|someone else|i did ?n'?t log|that'?s not me|no,? it wasn'?t)\b/i;
 
-function scriptedReply(messages: ChatMessage[]): { reply: string; escalate: boolean } {
-  const last = messages.filter((m) => m.role === "user").at(-1)?.content.toLowerCase() ?? "";
+function scriptedReply(messages: ChatMessage[]): Omit<BigFishResult, "live"> {
+  const userTurns = messages.filter((m) => m.role === "user");
+  const last = userTurns.at(-1)?.content.toLowerCase() ?? "";
+
   if (EXTORTION_SIGNS.test(last)) {
     return {
-      reply:
-        `I'm really concerned for your safety, and I want you to know none of this is your fault. ` +
-        `I'm connecting you with the ${config.bankName} support team now and pausing this login to keep you safe. ` +
-        `If someone is threatening you, please contact your local police. You don't have to face this alone.`,
-      escalate: true,
+      message:
+        `I'm really concerned for your safety, and none of this is your fault. I'm connecting you with the ${config.bankName} support team now and pausing this login to keep you safe. If someone is threatening you, please contact your local police — you don't have to face this alone.`,
+      action: "extortion",
+      suggestions: [],
+    };
+  }
+  if (NOT_ME_SIGNS.test(last)) {
+    return {
+      message:
+        `Thank you for telling me — that's exactly what I needed to know. Since this login wasn't you, I'm locking your account to protect it, and ${config.bankName} support will help you get back in safely.`,
+      action: "not_me",
+      suggestions: [],
     };
   }
   if (last.includes("real") && (last.includes("call") || last.includes("phone"))) {
     return {
-      reply:
-        "Good question. Your real bank will never rush you, ask for a code you received by text, or tell you to move money to keep it safe. If a call feels urgent or scary, hang up and call the number on the back of your card.",
-      escalate: false,
+      message:
+        "Good question. Your real bank will never rush you, ask for a code you got by text, or tell you to move money to keep it safe. If a call feels urgent or scary, it's okay to hang up and call the number on your card.",
+      action: "continue",
+      suggestions: ["That makes sense", "Someone is on the phone with me now", "It's just me, I'm logging in"],
     };
   }
-  if (last.includes("romantic") || last.includes("romance") || last.includes("extortion")) {
+  // Pace by turn: gentle check first, then let them proceed if nothing's wrong.
+  if (userTurns.length >= 2) {
     return {
-      reply:
-        "Some warning signs: someone you met online you haven't met in person, who professes strong feelings quickly, avoids video calls, and then asks for money, gift cards, or your codes — or threatens to share private images. None of that is your fault. It can help to talk it over with someone you trust before doing anything.",
-      escalate: false,
-    };
-  }
-  if (last.includes("support") || last.includes("help") || last.includes("scared") || last.includes("worried")) {
-    return {
-      reply:
-        "I'm really glad you're here, and you're not in trouble. Take a breath. Can you tell me a little about what's going on — is anyone helping you or telling you what to do with this log-in right now?",
-      escalate: false,
+      message:
+        "Thank you — nothing here worries me, and it sounds like this is you. I just wanted to make sure no one was pressuring you. Whenever you're ready, you can continue to sign in.",
+      action: "proceed",
+      suggestions: ["Yes, take me to sign in", "Actually, something feels off"],
     };
   }
   return {
-    reply:
-      "Thanks for letting me know. There's no rush here. Is anyone on a call or messaging you right now about this log-in, or asking you to share a code or move money?",
-    escalate: false,
+    message:
+      "Thanks for being here — there's no rush. Is this you choosing to log in, or did someone ask or tell you to?",
+    action: "continue",
+    suggestions: ["It's me, I'm logging in", "Someone asked me to", "I'm not sure"],
   };
 }
 
-// Returns Big Fish's next reply, plus whether to escalate (block the login and
-// connect to support). Uses Claude when ANTHROPIC_API_KEY is set, otherwise a
-// scripted fallback so the flow still works.
-export async function bigFishReply(
-  ctx: LoginContext,
-  messages: ChatMessage[],
-): Promise<{ reply: string; live: boolean; escalate: boolean }> {
+// --- Parsing the model's JSON ---------------------------------------------
+const ACTIONS: BigFishAction[] = ["continue", "proceed", "extortion", "not_me"];
+
+function parseResult(raw: string): Omit<BigFishResult, "live"> | null {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  let obj: unknown;
+  try {
+    obj = JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+  if (typeof obj !== "object" || obj === null) return null;
+  const o = obj as Record<string, unknown>;
+  const message = typeof o.message === "string" ? o.message.trim() : "";
+  const action = ACTIONS.includes(o.action as BigFishAction) ? (o.action as BigFishAction) : "continue";
+  const suggestions = Array.isArray(o.suggestions)
+    ? o.suggestions.filter((s): s is string => typeof s === "string").slice(0, 3)
+    : [];
+  if (!message) return null;
+  return { message, action, suggestions: action === "extortion" || action === "not_me" ? [] : suggestions };
+}
+
+// Returns Big Fish's next turn. Uses Claude when ANTHROPIC_API_KEY is set,
+// otherwise a scripted fallback so the flow still works.
+export async function bigFishReply(ctx: LoginContext, messages: ChatMessage[]): Promise<BigFishResult> {
   if (!client) return { ...scriptedReply(messages), live: false };
 
+  const exchanges = messages.filter((m) => m.role === "user").length;
   const response = await client.messages.create({
     model: "claude-opus-5-5",
     max_tokens: 600,
     output_config: { effort: "low" },
-    system: `${SYSTEM}\n\nThe flagged log-in came from ${ctx.location} (IP ${ctx.ip}). Mention this naturally if it helps them judge whether it was really them.`,
+    system:
+      `${SYSTEM}\n\nThe flagged log-in came from ${ctx.location} (IP ${ctx.ip}); mention it only if it helps. ` +
+      `The customer has sent ${exchanges} message(s) so far — by around the third exchange, reach "proceed" unless there are red flags, rather than asking more questions.`,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   });
   const raw = response.content
@@ -110,8 +155,7 @@ export async function bigFishReply(
     .map((b) => b.text)
     .join("")
     .trim();
-  const escalate = raw.includes(ESCALATE_MARKER);
-  const reply = raw.replaceAll(ESCALATE_MARKER, "").trim();
-  if (!reply) return { ...scriptedReply(messages), live: true };
-  return { reply, live: true, escalate };
+  const parsed = parseResult(raw);
+  if (!parsed) return { ...scriptedReply(messages), live: true };
+  return { ...parsed, live: true };
 }
