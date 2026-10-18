@@ -759,3 +759,9 @@ button:disabled {
   color: #15803d;
   margin: 4px 0;
 }
+
+.verify-box {
+  align-items: center;
+  text-align: center;
+  padding: 20px 0;
+}

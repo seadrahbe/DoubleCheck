@@ -1,74 +1,133 @@
 import { useState, type FormEvent } from 'react'
 import { api } from '../api'
-import { APP_NAME } from '../brand'
 import { bluetoothUnsupportedReason, checkProximity } from '../bluetooth'
 
+// Demo credentials that count as "correct" for this prototype.
+const DEMO_EMAIL = 'demo@northwind.example'
+const DEMO_PASSWORD = 'hunter22'
+
+type Stage = 'bluetooth' | 'gps' | 'mfa'
+
 type State =
-  | { step: 'idle' }
-  | { step: 'checking' }
-  | { step: 'not-found' } // filtered chooser closed empty: offer the full device list
-  | { step: 'fallback'; reason: string }
+  | { step: 'creds'; error?: string }
+  | { step: 'verifying'; stage: Stage }
+  | { step: 'mfa'; code: string }
+  | { step: 'error'; message: string }
 
 export interface SignedInInfo {
   email: string
-  deviceName: string
-  method: 'broadcast' | 'connection'
+  method: 'bluetooth' | 'gps'
   at: Date
 }
 
-interface Props {
-  onSignedIn: (info: SignedInInfo) => void
-  onFallback: () => Promise<void>
-}
+// Mock bank sign-in. Correct email + password advances to verification, which
+// confirms the account owner is present by the strongest available means:
+// Bluetooth proximity → GPS fallback → a one-time MFA code if neither is available.
+export default function ProximityLogin({ onSignedIn }: { onSignedIn: (info: SignedInInfo) => void }) {
+  const [state, setState] = useState<State>({ step: 'creds' })
+  const [email, setEmail] = useState(DEMO_EMAIL)
+  const [password, setPassword] = useState(DEMO_PASSWORD)
 
-// Mock bank sign-in. Instead of a password step, it confirms the user's phone is
-// nearby over Bluetooth: they open their banking app (which starts broadcasting)
-// and the browser reads its rotating code. Not nearby → the DoubleCheck survey.
-export default function ProximityLogin({ onSignedIn, onFallback }: Props) {
-  const [state, setState] = useState<State>({ step: 'idle' })
-  const [email, setEmail] = useState('demo@northwind.example')
-  const unsupported = bluetoothUnsupportedReason()
+  // Called straight from the form submit so the Bluetooth chooser keeps the
+  // click's user gesture (requestDevice is the first thing awaited).
+  async function verify() {
+    // 1. Bluetooth, when the browser supports it.
+    if (!bluetoothUnsupportedReason()) {
+      setState({ step: 'verifying', stage: 'bluetooth' })
+      const proximity = await checkProximity()
+      if (proximity.ok) {
+        try {
+          const res = await api.verifyProximity(proximity.proof)
+          if (res.result === 'approved') {
+            onSignedIn({ email, method: 'bluetooth', at: new Date() })
+            return
+          }
+        } catch {
+          // fall through to GPS
+        }
+      }
+      // Bluetooth available but didn't verify (no phone, cancelled, mismatch) → GPS.
+    }
 
-  async function fallBack(reason: string) {
-    setState({ step: 'fallback', reason })
-    await onFallback()
-  }
-
-  // Both callers are click handlers, and nothing is awaited before
-  // checkProximity: the Bluetooth chooser needs the click's user gesture.
-  async function attempt(showAllDevices: boolean) {
-    setState({ step: 'checking' })
-    const proximity = await checkProximity({ showAllDevices })
-    if (!proximity.ok) {
-      if (proximity.reason === 'cancelled' && !showAllDevices) {
-        setState({ step: 'not-found' })
+    // 2. GPS fallback.
+    if ('geolocation' in navigator) {
+      setState({ step: 'verifying', stage: 'gps' })
+      const located = await new Promise<boolean>((resolve) =>
+        navigator.geolocation.getCurrentPosition(
+          () => resolve(true),
+          () => resolve(false),
+          { timeout: 8000 },
+        ),
+      )
+      if (located) {
+        onSignedIn({ email, method: 'gps', at: new Date() })
         return
       }
-      await fallBack(proximity.message)
-      return
     }
+
+    // 3. Neither available → one-time MFA code.
+    setState({ step: 'verifying', stage: 'mfa' })
     try {
-      const res = await api.verifyProximity(proximity.proof)
-      if (res.result === 'approved') {
-        setState({ step: 'idle' })
-        onSignedIn({ email, deviceName: proximity.deviceName, method: proximity.method, at: new Date() })
-      } else {
-        await fallBack(
-          res.reason === 'code-used'
-            ? 'That code was just used. Wait a moment and try again.'
-            : proximity.method === 'broadcast'
-              ? "Your phone's code didn't match. Make sure the phone's and computer's clocks are set automatically."
-              : `${proximity.deviceName} isn't the phone registered to this account.`,
-        )
-      }
+      const { token } = await api.flaggedLogin()
+      const { code } = await api.issueCode(token)
+      setState({ step: 'mfa', code })
     } catch (err) {
-      await fallBack((err as Error).message)
+      setState({ step: 'error', message: (err as Error).message })
     }
   }
 
   function signIn(e: FormEvent) {
     e.preventDefault()
-    attempt(false)
+    if (email.trim() === DEMO_EMAIL && password === DEMO_PASSWORD) {
+      verify()
+    } else {
+      setState({ step: 'creds', error: 'Incorrect email or password.' })
+    }
+  }
+
+  if (state.step === 'verifying') {
+    const copy: Record<Stage, string> = {
+      bluetooth: 'Confirming your phone is nearby over Bluetooth…',
+      gps: 'Bluetooth unavailable. Checking your location…',
+      mfa: 'Bluetooth and location unavailable. Sending a one-time code…',
+    }
+    return (
+      <div className="login verify-box">
+        <div className="app-spinner" aria-hidden="true" />
+        <h2 className="section-title">Verifying it's you</h2>
+        <p className="muted small-top">{copy[state.stage]}</p>
+      </div>
+    )
+  }
+
+  if (state.step === 'mfa') {
+    return (
+      <div className="login">
+        <h2 className="section-title">Enter your one-time code</h2>
+        <p className="muted">
+          We couldn't confirm your phone by Bluetooth or location, so here's a one-time code. Enter it to finish signing
+          in, and never share it with anyone.
+        </p>
+        <p className="code">
+          {state.code.slice(0, 3)} {state.code.slice(3)}
+        </p>
+        <button className="link-button" onClick={() => setState({ step: 'creds' })}>
+          Start over
+        </button>
+      </div>
+    )
+  }
+
+  if (state.step === 'error') {
+    return (
+      <div className="login">
+        <h2 className="section-title">Something went wrong</h2>
+        <p className="error">{state.message}</p>
+        <button className="link-button" onClick={() => setState({ step: 'creds' })}>
+          Start over
+        </button>
+      </div>
+    )
   }
 
   return (
@@ -80,43 +139,17 @@ export default function ProximityLogin({ onSignedIn, onFallback }: Props) {
       </label>
       <label>
         Password
-        <input type="password" defaultValue="hunter22" autoComplete="off" />
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
       </label>
-      <div className="prompt-box">
-        <span className="prompt-icon" aria-hidden="true">📲</span>
-        <span>
-          Open your <strong>{APP_NAME}</strong> on your phone to finish signing in.
-        </span>
-      </div>
-      <button className="primary" type="submit" disabled={state.step === 'checking'}>
-        {state.step === 'checking' ? 'Checking your phone is nearby…' : 'Continue'}
+      <button className="primary" type="submit">
+        Sign in
       </button>
-      {state.step === 'idle' && (
+      {state.error ? (
+        <p className="error small-top">{state.error}</p>
+      ) : (
         <p className="muted small-top">
-          {unsupported
-            ? `Bluetooth isn't available here: ${unsupported} Continuing will send a DoubleCheck survey instead.`
-            : `We confirm your phone is nearby over Bluetooth. No code to type — just open the ${APP_NAME}.`}
-        </p>
-      )}
-      {state.step === 'not-found' && (
-        <div className="not-found">
-          <p className="muted small-top">
-            Your phone didn't show up. Make sure the {APP_NAME} is open, then try the full list. iPhones often appear as
-            just “iPhone”. No pairing needed: decline any pairing prompt.
-          </p>
-          <div className="answers">
-            <button type="button" className="answer" onClick={() => attempt(true)}>
-              Show all nearby devices
-            </button>
-            <button type="button" className="answer" onClick={() => fallBack('No phone was selected.')}>
-              Send me a survey instead
-            </button>
-          </div>
-        </div>
-      )}
-      {state.step === 'fallback' && (
-        <p className="muted small-top">
-          Couldn't confirm your phone is nearby ({state.reason}) We've sent you a DoubleCheck survey instead.
+          After your password, we confirm it's really you — by Bluetooth if your phone is nearby, your location if not,
+          or a one-time code as a last resort.
         </p>
       )}
     </form>

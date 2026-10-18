@@ -29,7 +29,7 @@ export default function Demo() {
     <div className="demo">
       <section className="card">
         <h1>{BANK_NAME}</h1>
-        <ProximityLogin onSignedIn={setSignedIn} onFallback={() => api.triggerLogin('sms').then(() => {})} />
+        <ProximityLogin onSignedIn={setSignedIn} />
         <h2 className="section-title divider">No app or Bluetooth? Try it here →</h2>
         <p className="muted">
           The phone on the right is an interactive stand-in for the DoubleCheck app, so anyone can walk the whole

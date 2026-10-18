@@ -15,11 +15,12 @@ export default function SignedIn({ info, onSignOut }: { info: SignedInInfo; onSi
       <div className="verified">
         <span className="verified-icon" aria-hidden="true">🛡</span>
         <div>
-          <strong>Verified by your {BANK_NAME} app</strong>
+          <strong>Verified by {info.method === 'bluetooth' ? 'Bluetooth proximity' : 'your location'}</strong>
           <p className="muted small-top">
-            Your phone was confirmed nearby over Bluetooth at {time}
-            {info.method === 'broadcast' ? ' from a rotating code, with no connection or pairing' : ''}, so this sign-in
-            didn't need a DoubleCheck survey.
+            {info.method === 'bluetooth'
+              ? `Your ${BANK_NAME} phone was confirmed nearby over Bluetooth`
+              : `Your location was confirmed nearby`}{' '}
+            at {time}, so no one-time code was needed.
           </p>
         </div>
       </div>
