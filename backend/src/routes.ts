@@ -5,7 +5,6 @@ import { lookupLocation } from "./geo.js";
 import { CODE_PATTERN, matchProximityCode } from "./proximityCode.js";
 import { questionsFor } from "./questions.js";
 import { sendEmail } from "./email.js";
-import { sendSms } from "./sms.js";
 import { bigFishReply, type ChatMessage } from "./bigfish.js";
 import { createAttempt, findAttempt, type Channel } from "./store.js";
 
@@ -53,35 +52,53 @@ router.post("/login-attempts", async (req, res) => {
     `This log-in attempt has been flagged as suspicious. ` +
     `Please complete a DoubleCheck survey to proceed:`;
 
-  // No recipient configured: log instead of sending, like the unconfigured providers do.
-  if (!contact) {
-    const name = channel === "email" ? "MY_EMAIL" : "MY_PHONE_NUMBER";
-    console.log(`\n[${channel}] ${name} not set, would have sent:\n${intro} ${link}\n`);
+  // Text sending was removed (no Twilio): the "sms" channel just returns the
+  // message so the on-screen phone can display it.
+  if (channel === "sms") {
     res.status(201).json({ channel, sent: false, link, message: `${intro} ${link}` });
     return;
   }
 
+  // Email (Resend). No recipient configured → log instead of sending.
+  if (!contact) {
+    console.log(`\n[email] MY_EMAIL not set, would have sent:\n${intro} ${link}\n`);
+    res.status(201).json({ channel, sent: false, link, message: `${intro} ${link}` });
+    return;
+  }
   try {
-    const { sent } =
-      channel === "email"
-        ? await sendEmail(
-            contact,
-            "Suspicious log-in attempt: DoubleCheck required",
-            `${intro} ${link}`,
-            `<p>${escapeHtml(intro)}</p><p><a href="${escapeHtml(link)}">Complete your DoubleCheck survey</a></p>` +
-              `<p style="color:#666;font-size:13px">This link expires in 10 minutes and can only be used once.</p>`,
-          )
-        : await sendSms(contact, `${intro} ${link}`);
+    const { sent } = await sendEmail(
+      contact,
+      "Suspicious log-in attempt: DoubleCheck required",
+      `${intro} ${link}`,
+      `<p>${escapeHtml(intro)}</p><p><a href="${escapeHtml(link)}">Complete your DoubleCheck survey</a></p>` +
+        `<p style="color:#666;font-size:13px">This link expires in 10 minutes and can only be used once.</p>`,
+    );
     res.status(201).json({ channel, sent, link, message: `${intro} ${link}` });
   } catch (err) {
-    console.error(`[${channel}] failed:`, err);
+    console.error(`[email] failed:`, err);
     const reason = err instanceof Error ? err.message : String(err);
-    res.status(502).json({
-      error: `Failed to send ${channel === "email" ? "email" : "text message"}: ${reason}`,
-      link,
-      message: `${intro} ${link}`,
-    });
+    res.status(502).json({ error: `Failed to send email: ${reason}`, link, message: `${intro} ${link}` });
   }
+});
+
+// Creates a flagged-login attempt for the on-screen app simulator (and the real
+// app): returns the token plus where the suspicious log-in came from.
+router.post("/flagged-login", async (_req, res) => {
+  const ip = config.simulatedLoginIp;
+  const location = await lookupLocation(ip);
+  const attempt = createAttempt("app", "", ip, location);
+  res.status(201).json({ token: attempt.token, location, ip });
+});
+
+// Final step of the app flow: issues the one-time MFA code (single use per token).
+router.post("/issue-code/:token", (req, res) => {
+  const found = findAttempt(req.params.token);
+  if (!found.ok) {
+    res.status(found.status).json({ error: found.error });
+    return;
+  }
+  found.attempt.used = true;
+  res.json({ code: newMfaCode() });
 });
 
 router.get("/survey/:token", (req, res) => {

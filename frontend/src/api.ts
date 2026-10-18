@@ -60,4 +60,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ questionId, answer }),
     }),
+  // Starts a flagged-login session for the app flow (real app or on-screen simulator).
+  flaggedLogin: () => request<{ token: string; location: string; ip: string }>('/flagged-login', { method: 'POST' }),
+  // Big Fish support chat.
+  bigFish: (token: string, messages: ChatTurn[]) =>
+    request<{ reply: string; live: boolean }>(`/bigfish/${encodeURIComponent(token)}`, {
+      method: 'POST',
+      body: JSON.stringify({ messages }),
+    }),
+  // Final step of the app flow: issues the one-time MFA code.
+  issueCode: (token: string) =>
+    request<{ code: string }>(`/issue-code/${encodeURIComponent(token)}`, { method: 'POST' }),
+}
+
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
 }

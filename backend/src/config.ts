@@ -11,11 +11,6 @@ export const config = {
   // IP the simulated suspicious login comes from (looked up to a location).
   simulatedLoginIp: env.SIMULATED_LOGIN_IP || "185.220.101.1",
   tokenTtlMs: 10 * 60 * 1000,
-  twilio: {
-    accountSid: env.TWILIO_ACCOUNT_SID,
-    authToken: env.TWILIO_AUTH_TOKEN,
-    fromNumber: env.TWILIO_FROM_NUMBER,
-  },
   resend: {
     apiKey: env.RESEND_API_KEY,
     // resend.dev's shared sender works without owning a domain.

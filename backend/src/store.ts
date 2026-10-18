@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { config } from "./config.js";
 
-export type Channel = "sms" | "email";
+export type Channel = "sms" | "email" | "app";
 
 export interface LoginAttempt {
   token: string;
