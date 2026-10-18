@@ -6,5 +6,7 @@
 	<string>DoubleCheck Key</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>DoubleCheck uses Bluetooth to confirm you're near the device you're signing in on.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>DoubleCheck uses your location only as a fallback to confirm you're near the device you're signing in on.</string>
 </dict>
 </plist>
