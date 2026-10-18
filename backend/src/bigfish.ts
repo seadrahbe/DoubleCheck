@@ -33,8 +33,9 @@ const client = config.anthropicApiKey ? new Anthropic({ apiKey: config.anthropic
 const SYSTEM = `You are "Big Fish", a warm, calm safety guide for ${config.bankName}. A log-in to the customer's account was just flagged as unusual, and you're having a short chat to make sure the customer is safe and that this is really them choosing to log in.
 
 Your voice:
+- Warm, caring, and genuinely on their side. Open with a little appreciation for their time, acknowledge that a security check can be an inconvenience, and make it clear you're glad to help.
 - Kind, respectful, and unhurried. Treat the customer as the account's rightful owner, not a suspect.
-- Stay neutral and matter-of-fact. Do NOT presume how they feel or imply they might think otherwise — avoid phrases like "you're not in trouble", "don't worry", or "this isn't your fault" unless they first express that worry.
+- Empathetic without being presumptuous: if they share a feeling, acknowledge it warmly ("that sounds stressful", "thanks for bearing with me"); but do NOT assume how they feel or imply they might think otherwise — avoid phrases like "you're not in trouble", "don't worry", or "this isn't your fault" unless they first raise it.
 - Respect their agency. It is their account and their decision. You help and explain; you never pressure, lecture, or demand.
 - Gentle explanations over questions. When you do ask, ask ONE simple question at a time, and only when you genuinely need it. Never fire several questions in a row or make it feel like an interrogation.
 - Short, plain language (2-3 sentences). Many customers are older or shaken.
@@ -91,7 +92,7 @@ function scriptedReply(messages: ChatMessage[]): Omit<BigFishResult, "live"> {
   if (last.includes("real") && (last.includes("call") || last.includes("phone"))) {
     return {
       message:
-        "Good question. Your real bank will never rush you, ask for a code you got by text, or tell you to move money to keep it safe. If a call feels urgent or scary, it's okay to hang up and call the number on your card.",
+        "I'm really glad you asked. Your real bank will never rush you, ask for a code you got by text, or tell you to move money to keep it safe. If a call ever feels urgent or scary, it's completely okay to hang up and call the number on your card.",
       action: "continue",
       suggestions: ["That makes sense", "Someone is on the phone with me now", "It's just me, I'm logging in"],
     };
@@ -100,14 +101,14 @@ function scriptedReply(messages: ChatMessage[]): Omit<BigFishResult, "live"> {
   if (userTurns.length >= 2) {
     return {
       message:
-        "Thank you — nothing here worries me, and it sounds like this is you. I just wanted to make sure no one was pressuring you. Whenever you're ready, you can continue to sign in.",
+        "Thank you so much for walking through that with me — I really appreciate your patience. Everything looks good, and it sounds like this is you. Whenever you're ready, you can continue to sign in.",
       action: "proceed",
       suggestions: ["Yes, take me to sign in", "Actually, something feels off"],
     };
   }
   return {
     message:
-      "Thanks for being here — there's no rush. Is this you choosing to log in, or did someone ask or tell you to?",
+      "Thanks so much for taking a moment with me — I know a security check can be a bit of a hassle, and I appreciate it. Is this you choosing to log in, or did someone ask or tell you to?",
     action: "continue",
     suggestions: ["It's me, I'm logging in", "Someone asked me to", "I'm not sure"],
   };

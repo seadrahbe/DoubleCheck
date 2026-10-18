@@ -162,7 +162,7 @@ function Chat({
   onProceed: () => void
   onBlocked: (reason: BlockReason) => void
 }) {
-  const greeting = `Hi, I'm Big Fish from the ${BANK_NAME} safety team. A login from ${location} was flagged, so I'm checking in before it goes through. Is this you logging in right now?`
+  const greeting = `Hi, I'm Big Fish from the ${BANK_NAME} safety team — thanks for taking a moment with me. A login from ${location} was flagged, so I'm just checking in before it goes through. Is this you logging in right now?`
   const [turns, setTurns] = useState<ChatTurn[]>([{ role: 'assistant', content: greeting }])
   const [suggestions, setSuggestions] = useState<string[]>(OPENING_SUGGESTIONS)
   const [cleared, setCleared] = useState(false) // Big Fish said it's fine to proceed

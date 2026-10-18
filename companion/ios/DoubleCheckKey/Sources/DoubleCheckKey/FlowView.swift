@@ -177,7 +177,7 @@ struct ChatView: View {
         .padding(16)
         .onAppear {
             if turns.isEmpty {
-                turns = [ChatMessage(role: .assistant, content: "Hi, I'm Big Fish from the \(bankName) safety team. A login from \(location) was flagged, so I'm checking in before it goes through. Is this you logging in right now?")]
+                turns = [ChatMessage(role: .assistant, content: "Hi, I'm Big Fish from the \(bankName) safety team — thanks for taking a moment with me. A login from \(location) was flagged, so I'm just checking in before it goes through. Is this you logging in right now?")]
             }
         }
     }
