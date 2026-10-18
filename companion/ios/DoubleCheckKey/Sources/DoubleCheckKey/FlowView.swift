@@ -1,11 +1,13 @@
 import SwiftUI
 
 // The flagged-login flow, in step with the web experience:
-// open → check for an active call → Big Fish chat → (proceed) confirm → verify →
-// code; or, if Big Fish concludes extortion / "this wasn't me", it ends the chat
-// and shows steps to secure the account (the web app is where the lock happens).
+// open → check for an active call → Big Fish chat → (proceed) confirm → pair.
+// At "pair" the phone broadcasts over Bluetooth and the user finishes on the
+// computer, which reads the broadcast and signs in. If Big Fish concludes
+// extortion / "this wasn't me", it ends the chat with steps to secure the
+// account (the web app is where the lock happens).
 enum FlowStep {
-    case loading, callcheck, chat, confirm, verifying, code, secure, error
+    case loading, callcheck, chat, confirm, pairing, secure, error
 }
 
 let supportName = "\(bankName) support"
@@ -21,7 +23,6 @@ struct FlowView: View {
     @State private var step: FlowStep = .loading
     @State private var token = ""
     @State private var location = "an unfamiliar location"
-    @State private var code = ""
     @State private var secureReason: BigFishAction = .extortion
     @State private var errorText = ""
 
@@ -53,11 +54,9 @@ struct FlowView: View {
                     }
                 )
             case .confirm:
-                ConfirmView(onBack: { step = .chat }, onConfirm: { Task { await confirmAndVerify() } })
-            case .verifying:
-                VerifyingView(key: key, onDone: { step = .code })
-            case .code:
-                CodeView(code: code) { Task { await start() } }
+                ConfirmView(onBack: { step = .chat }, onConfirm: { step = .pairing })
+            case .pairing:
+                PairingView(key: key) { Task { await start() } }
             case .secure:
                 SecureAccountView(reason: secureReason) { Task { await start() } }
             }
@@ -73,18 +72,6 @@ struct FlowView: View {
             token = fl.token
             location = fl.location
             step = .callcheck
-        } catch {
-            errorText = error.localizedDescription
-            step = .error
-        }
-    }
-
-    // Issues the one-time code once, from the confirm action, then shows the
-    // verify animation.
-    private func confirmAndVerify() async {
-        step = .verifying
-        do {
-            code = try await API.issueCode(token: token).code
         } catch {
             errorText = error.localizedDescription
             step = .error
@@ -237,70 +224,36 @@ struct ConfirmView: View {
             Text("Are you sure?").font(.title2.bold())
             Text("If anyone is guiding you, pressuring you, or asked you to log in or share a code, please stop now and talk to someone you trust first.")
                 .multilineTextAlignment(.center).foregroundStyle(.secondary)
-            Button("Yes, verify and log me in", action: onConfirm).buttonStyle(.borderedProminent)
+            Button("Yes, this is me — pair my phone", action: onConfirm).buttonStyle(.borderedProminent)
             Button("Go back", action: onBack)
         }
         .padding(24)
     }
 }
 
-struct VerifyingView: View {
+// After the user chooses to log in, the phone just broadcasts over Bluetooth and
+// waits — the computer reads the broadcast and completes the sign-in there. No
+// code is shown here.
+struct PairingView: View {
     @ObservedObject var key: KeyPeripheral
     let onDone: () -> Void
-    @State private var lines: [String] = []
 
     var body: some View {
         VStack(spacing: 16) {
-            ProgressView()
-            Text("Verifying it's you").font(.title3.bold())
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(lines, id: \.self) { line in
-                    Text(line).font(.callout).foregroundStyle(line.contains("✓") ? .green : .secondary)
+            Image(systemName: key.isBroadcasting ? "dot.radiowaves.left.and.right" : "wave.3.right")
+                .font(.system(size: 48))
+                .foregroundStyle(key.isBroadcasting ? Color.green : Color.secondary)
+            Text(key.isBroadcasting ? "Ready to pair" : "Starting Bluetooth…").font(.title2.bold())
+            Text("On the computer you're signing in on, choose \"Pair with my phone\" to finish. Keep this screen open and nearby.")
+                .multilineTextAlignment(.center).foregroundStyle(.secondary)
+            if !key.code.isEmpty {
+                VStack(spacing: 4) {
+                    Text("DC-\(key.code)").font(.system(.title3, design: .monospaced).bold())
+                    Text("New code in \(key.secondsLeft)s").font(.caption).foregroundStyle(.secondary)
                 }
             }
-        }
-        .padding(24)
-        .task { await run() }
-    }
-
-    private func run() async {
-        func add(_ s: String) { lines.append(s) }
-        func wait(_ ms: UInt64) async { try? await Task.sleep(nanoseconds: ms * 1_000_000) }
-
-        add("Checking your DoubleCheck Key over Bluetooth…")
-        await wait(1100)
-        if key.isBroadcasting {
-            add("Verified your key is nearby over Bluetooth ✓")
-        } else if LocationProbe.available {
-            add("Bluetooth unavailable. Checking your location…")
-            _ = await LocationProbe().fix()
-            add("Verified by your location ✓")
-        } else {
-            add("Bluetooth and location unavailable. Sending your code…")
-        }
-        await wait(900)
-        onDone()
-    }
-}
-
-struct CodeView: View {
-    let code: String
-    let onDone: () -> Void
-
-    private var grouped: String {
-        code.count == 6 ? "\(code.prefix(3)) \(code.suffix(3))" : code
-    }
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
-            Text("You're verified").font(.title2.bold())
-            Text("Here's your one-time code. Never share it with anyone.")
-                .multilineTextAlignment(.center).foregroundStyle(.secondary)
-            Text(grouped).font(.system(size: 40, weight: .bold, design: .monospaced)).foregroundStyle(.green)
-            Text("This is how the code reaches you when your phone can't be auto-verified nearby.")
-                .font(.caption).multilineTextAlignment(.center).foregroundStyle(.secondary)
-            Button("Done", action: onDone)
+            Text(key.status).font(.caption).multilineTextAlignment(.center).foregroundStyle(.secondary)
+            Button("Cancel", action: onDone).padding(.top, 4)
         }
         .padding(24)
     }
