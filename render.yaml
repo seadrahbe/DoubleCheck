@@ -23,6 +23,9 @@ services:
         value: DoubleCheck <onboarding@resend.dev>
       - key: MY_EMAIL
         sync: false
+      # Secret served by the user's DoubleCheck Key over Bluetooth.
+      - key: AUTH_DEVICE_KEY
+        sync: false
       - key: MY_PHONE_NUMBER
         sync: false
       # Optional: leave blank and texts are shown on the demo page's phone instead.

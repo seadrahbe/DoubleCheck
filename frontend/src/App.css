@@ -287,3 +287,60 @@ button:disabled {
 .phone-bubble a {
   color: #0a66d8;
 }
+
+.section-title {
+  color: var(--text-h);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+.section-title.divider {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.login {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.login label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.login input {
+  font: inherit;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.login .primary {
+  margin: 6px 0 0;
+}
+
+.login .code {
+  margin: 8px 0;
+}
+
+.small-top {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.link-button {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+}

@@ -1,4 +1,4 @@
-import { randomInt } from "node:crypto";
+import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import { config } from "./config.js";
 import { lookupLocation } from "./geo.js";
@@ -8,6 +8,12 @@ import { sendSms } from "./sms.js";
 import { createAttempt, findAttempt, type Channel } from "./store.js";
 
 export const router = Router();
+
+const newMfaCode = () => String(randomInt(0, 1_000_000)).padStart(6, "0");
+
+// Hash first so both sides are the same length for timingSafeEqual.
+const sha256 = (s: string) => createHash("sha256").update(s).digest();
+const sameSecret = (a: string, b: string) => timingSafeEqual(sha256(a), sha256(b));
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -128,6 +134,24 @@ router.post("/survey/:token/answers", (req, res) => {
     return;
   }
   attempt.used = true;
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  res.json({ result: "approved", code });
+  res.json({ result: "approved", code: newMfaCode() });
+});
+
+// Bluetooth proximity check. The login page reads the device key off the user's
+// DoubleCheck Key over BLE, which only works within Bluetooth range, and sends it
+// here. A match approves the log-in without the survey; anything else means the
+// page falls back to sending the survey.
+router.post("/proximity/verify", (req, res) => {
+  if (!config.authDeviceKey) {
+    res.status(503).json({ error: "AUTH_DEVICE_KEY is not set in backend/.env" });
+    return;
+  }
+  const deviceKey: unknown = req.body?.deviceKey;
+  if (typeof deviceKey !== "string" || !sameSecret(deviceKey, config.authDeviceKey)) {
+    console.log("[proximity] device key mismatch: falling back to survey");
+    res.json({ result: "mismatch" });
+    return;
+  }
+  console.log("[proximity] DoubleCheck Key verified nearby: log-in approved");
+  res.json({ result: "approved", code: newMfaCode() });
 });

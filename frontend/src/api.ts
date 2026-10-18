@@ -49,6 +49,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ channel }),
     }),
+  verifyProximity: (deviceKey: string) =>
+    request<{ result: 'approved'; code: string } | { result: 'mismatch' }>('/proximity/verify', {
+      method: 'POST',
+      body: JSON.stringify({ deviceKey }),
+    }),
   getSurvey: (token: string) => request<SurveyInfo>(`/survey/${encodeURIComponent(token)}`),
   submitAnswer: (token: string, questionId: string, answer: boolean) =>
     request<AnswerResponse>(`/survey/${encodeURIComponent(token)}/answers`, {

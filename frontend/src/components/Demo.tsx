@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, ApiError, type Channel } from '../api'
 import PhonePreview, { type TextMessage } from './PhonePreview'
+import ProximityLogin from './ProximityLogin'
 
 const NOT_CONFIGURED: Record<Channel, string> = {
   sms: 'Twilio is not configured, so the text is shown on the phone instead.',
@@ -39,6 +40,8 @@ export default function Demo() {
     <div className="demo">
       <section className="card">
         <h1>DoubleCheck Prototype</h1>
+        <ProximityLogin onFallback={() => trigger('sms')} />
+        <h2 className="section-title divider">Or send the survey directly</h2>
         <p className="muted">
           Simulate a suspicious login. The backend sends the DoubleCheck survey link to the phone number or email
           address in <code>backend/.env</code>.
