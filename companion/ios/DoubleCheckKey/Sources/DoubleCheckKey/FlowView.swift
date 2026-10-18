@@ -96,6 +96,8 @@ struct CallCheckView: View {
                     .multilineTextAlignment(.center).foregroundStyle(.secondary)
                 Button("Continue", action: onContinue).buttonStyle(.borderedProminent)
             }
+            Text("Unsure if it's us? Call the real \(bankName) at \(supportPhone).")
+                .font(.footnote).multilineTextAlignment(.center).foregroundStyle(.secondary)
         }
         .padding(24)
     }

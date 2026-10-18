@@ -144,6 +144,9 @@ function CallCheck({ onContinue }: { onContinue: () => void }) {
       <button className="app-btn ghost" onClick={onContinue}>
         I was — I've hung up now
       </button>
+      <p className="app-muted tiny">
+        Unsure if it's us? Call the real {BANK_NAME} at <a href={`tel:${SUPPORT_PHONE}`}>{SUPPORT_PHONE}</a>.
+      </p>
     </div>
   )
 }
